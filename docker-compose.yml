@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════
 # 有声书 YouTube 频道管理系统 — Docker Compose
 # ═══════════════════════════════════════════════════════════════
-# 包含 Web 应用 + PostgreSQL 两个服务
+# 包含 Web 应用 + PostgreSQL + HF 中继调度器 三个服务
 # 用法：
 #   docker-compose up -d --build
 # ═══════════════════════════════════════════════════════════════
@@ -71,9 +71,42 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ─── HF 中继调度器（与 Web 服务共用同一 PostgreSQL）───
+  vps-relay:
+    build:
+      context: hf_workers/vps_relay
+      dockerfile: Dockerfile
+    container_name: hf-vps-relay
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_DSN=postgresql://audiobook_app:${POSTGRES_PASSWORD:-changeme_strong_password}@postgres:5432/audiobook
+      - WORKER_URLS=${WORKER_URLS:-}
+      - WEB_PASSWORD=${RELAY_WEB_PASSWORD:-}
+      - WEB_PORT=38080
+      - CHECK_INTERVAL=15
+      - STUCK_TIMEOUT_M=1440
+      - CLEANUP_INTERVAL=600
+      - AUTO_START_SCHEDULER=1
+      - RELAY_CONFIG_FILE=/data/relay_config.json
+    volumes:
+      - relay-data:/data
+    ports:
+      - "38080:38080"
+    networks:
+      - audiobook_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   output_data:
   postgres_data:
+  relay-data:
 
 networks:
   audiobook_net:

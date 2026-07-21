@@ -63,10 +63,9 @@
 
 ```
 hf_workers/
-├── vps_relay/            # VPS 中继调度器（部署在 VPS 上）
+├── vps_relay/            # VPS 中继调度器（已合并到主 docker-compose.yml，随主项目一起部署）
 │   ├── app.py            # Flask 应用：调度 + 中继 + 配置分发
 │   ├── Dockerfile
-│   ├── docker-compose.yml
 │   └── requirements.txt
 ├── unified_worker/       # HF 统一 Worker（部署在 HF Space）
 │   ├── app.py            # Flask 应用：双槽位管理 + 流水线/测试端点
@@ -80,33 +79,29 @@ hf_workers/
 
 ## 部署步骤
 
-### 第一步：部署 VPS 中继调度器
+### 第一步：VPS 中继调度器（随主项目一键部署）
 
-VPS 中继调度器与当前项目部署在同一台 VPS 上，连接同一个 PostgreSQL 数据库。
+VPS 中继调度器已合并到主项目 `docker-compose.yml`，无需单独部署。运行主项目部署脚本时自动一起构建启动：
 
 ```bash
-# 1. 进入 VPS 中继目录
-cd hf_workers/vps_relay
-
-# 2. 编辑 docker-compose.yml，修改环境变量
-#    - POSTGRES_DSN: 你的 PostgreSQL 连接串
-#    - WORKER_URLS: HF 统一 Worker 地址（部署后填写）
-#    - WEB_PASSWORD: 管理面板密码
-
-# 3. 一键部署（智能构建 + 重启 + 健康检查）
-bash deploy.sh
-
-# 或手动构建并启动
-docker compose up -d --build
-
-# 4. 验证
-curl http://localhost:38080/api/status
+cd /root/audiobook
+bash scripts/git-server-deploy.sh
 ```
 
-启动后访问 `http://VPS_IP:38080` 可查看管理面板。
+部署脚本会自动检测 `hf_workers/vps_relay/` 目录的源码变更，按需重建镜像。启动后三个容器同时运行：
+
+| 容器 | 端口 | 说明 |
+|------|------|------|
+| `audiobook_postgres` | 5432 | PostgreSQL 数据库 |
+| `audiobook_web` | 59386 | Web 管理系统 |
+| `hf-vps-relay` | 38080 | HF 中继调度器 |
+
+访问 `http://VPS_IP:38080` 可查看中继管理面板。
 在面板「⚙️ 配置管理」中可实时修改所有配置（Worker URLs、调度参数、流水线参数等），保存后立即生效，无需重启。
 
-> **后续更新**：代码更新后，只需在 `hf_workers/vps_relay/` 目录下运行 `bash deploy.sh` 即可自动构建并重启。脚本会智能检测文件变更，无变更时跳过构建。
+> 中继调度器的数据库连接串由 `docker-compose.yml` 自动配置（使用容器名 `postgres:5432`），复用主项目 `.env` 中的 `POSTGRES_PASSWORD`，无需额外设置。
+>
+> 如需设置中继面板密码，在 `.env` 中添加 `RELAY_WEB_PASSWORD=your_password`。
 
 ### 第二步：部署 HF 统一 Worker
 
@@ -135,23 +130,27 @@ cp /path/to/project/hf_workers/unified_worker/Dockerfile .
 cp /path/to/project/hf_workers/unified_worker/app.py .
 cp /path/to/project/hf_workers/unified_worker/runner.py .
 cp /path/to/project/hf_workers/unified_worker/requirements.txt .
+cp /path/to/project/hf_workers/shared.py .
 cp -r /path/to/project/pipeline/ ./pipeline/
 
 # 3. 修改 Dockerfile 中的 COPY 路径
 #    将 COPY hf_workers/unified_worker/requirements.txt 改为 COPY requirements.txt
 #    将 COPY hf_workers/unified_worker/app.py 改为 COPY app.py
 #    将 COPY hf_workers/unified_worker/runner.py 改为 COPY runner.py
+#    将 COPY hf_workers/unified_worker/shared.py 改为 COPY shared.py
 #    将 COPY pipeline/ 保持不变
 
 # 4. 在 HF Space 的 Settings → Repository secrets 中添加环境变量：
-#    - POSTGRES_DSN: 你的 PostgreSQL 连接串
-#    - VPS_RELAY_URL: http://VPS_IP:38080
+#    - POSTGRES_DSN: postgresql://audiobook_app:你的数据库密码@你的VPS公网IP:5432/audiobook
+#    - VPS_RELAY_URL: http://你的VPS公网IP:38080
 
 # 5. 提交推送
 git add .
 git commit -m "Initial unified worker"
 git push
 ```
+
+> **注意**：HF Space 的 `POSTGRES_DSN` 中需要使用 VPS **公网 IP**（不是 Docker 内部地址），因为 HF Space 在远程运行。
 
 #### 2.3 验证统一 Worker
 
@@ -163,19 +162,30 @@ curl https://你的用户名-audiobook-worker-1.hf.space/health
 
 ### 第三步：配置 VPS 中继的 Worker 地址
 
-将 HF Space 的地址填入 VPS 中继调度器：
+将 HF Space 的地址填入 VPS 中继调度器（三选一）：
+
+**方法一：通过中继管理面板（推荐）**
+
+1. 浏览器访问 `http://VPS_IP:38080`
+2. 进入「⚙️ 配置管理」
+3. 在 `worker_urls` 中填入 HF Space 地址
+4. 保存，立即生效，无需重启
+
+**方法二：通过 API**
 
 ```bash
-# 方法一：编辑 docker-compose.yml 重启
-# 在 WORKER_URLS 中填入 HF Space 地址
-
-# 方法二：通过 VPS 中继管理面板 API 动态更新
 curl -X POST http://VPS_IP:38080/api/config \
   -H "Content-Type: application/json" \
-  -d '{
-    "worker_urls": ["https://你的用户名-audiobook-worker-1.hf.space"]
-  }'
+  -d '{"worker_urls": ["https://你的用户名-audiobook-worker-1.hf.space"]}'
 ```
+
+**方法三：编辑 .env 后重新部署**
+
+在项目根目录 `.env` 中设置：
+```bash
+WORKER_URLS=https://你的用户名-audiobook-worker-1.hf.space
+```
+然后运行 `bash scripts/git-server-deploy.sh` 重启。
 
 ### 第四步：在后端全局设置中配置
 
@@ -275,9 +285,12 @@ HF Worker → GET VPS:38080/yt-api/<channel>/token
 
 ### VPS 中继调度器
 
+> 以下变量由主项目 `docker-compose.yml` 自动配置（复用 `.env` 中的 `POSTGRES_PASSWORD`），通常无需手动修改。
+> `WORKER_URLS` 和 `RELAY_WEB_PASSWORD` 可在 `.env` 中设置，也可通过管理面板实时修改。
+
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `POSTGRES_DSN` | ✅ | - | PostgreSQL 连接串 |
+| `POSTGRES_DSN` | ✅ | 自动配置 | PostgreSQL 连接串（容器内 `postgres:5432`） |
 | `WORKER_URLS` | ✅ | - | HF 统一 Worker 地址（逗号分隔，可在面板修改） |
 | `TEST_MODELSCOPE_TOKEN` | - | - | 测试用 ModelScope Token（可在面板修改） |
 | `WEB_PORT` | - | 38080 | 管理面板端口 |

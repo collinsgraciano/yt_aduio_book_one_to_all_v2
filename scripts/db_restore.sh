@@ -28,12 +28,6 @@ if [ ! -f "$BACKUP_FILE" ]; then
     exit 1
 fi
 
-# ─── 读取 .env 中的 POSTGRES_PASSWORD ───
-if [ -f .env ]; then
-    POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d'=' -f2- | tr -d '[:space:]')"
-fi
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-changeme_strong_password}"
-
 CONTAINER="audiobook_postgres"
 PG_USER="audiobook_app"
 PG_DB="audiobook"
@@ -73,11 +67,26 @@ docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -c "
 " 2>/dev/null || true
 
 # 删除并重建数据库
-docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -c "DROP DATABASE IF EXISTS ${PG_DB};" 2>/dev/null
-docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -c "CREATE DATABASE ${PG_DB};" 2>/dev/null
+docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -c "DROP DATABASE IF EXISTS ${PG_DB};" || {
+    echo "  [x] 无法删除数据库 ${PG_DB}（可能仍有活跃连接）"
+    exit 1
+}
+docker exec "$CONTAINER" psql -U "$PG_USER" -d postgres -c "CREATE DATABASE ${PG_DB};" || {
+    echo "  [x] 无法创建数据库 ${PG_DB}"
+    exit 1
+}
 
 # 恢复数据
-gunzip -c "$BACKUP_FILE" | docker exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" 2>&1 | grep -v "^$" || true
+set +e
+gunzip -c "$BACKUP_FILE" | docker exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" 2>&1 | grep -v "^$"
+RESTORE_GUNZIP_STATUS=${PIPESTATUS[0]}
+RESTORE_PSQL_STATUS=${PIPESTATUS[1]}
+set -e
+
+if [ "$RESTORE_GUNZIP_STATUS" -ne 0 ] || [ "$RESTORE_PSQL_STATUS" -ne 0 ]; then
+    echo "  [x] 恢复过程中出现错误"
+    exit 1
+fi
 
 echo "  ✓ 恢复完成"
 

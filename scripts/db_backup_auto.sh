@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-# 定时数据库备份脚本 — 压缩保存，仅保留最新 3 个
+# 定时数据库备份脚本 — 压缩保存，仅保留最新 7 个
 # ═══════════════════════════════════════════════════════════════
 # 用法：
 #   bash scripts/db_backup_auto.sh
@@ -17,7 +17,7 @@ cd "${PROJECT_ROOT}"
 
 # ─── 配置 ───
 BACKUP_DIR="${PROJECT_ROOT}/backups"
-KEEP_COUNT=3
+KEEP_COUNT=7
 CONTAINER="audiobook_postgres"
 PG_USER="audiobook_app"
 PG_DB="audiobook"
@@ -35,14 +35,18 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
 fi
 
 # ─── 备份 ───
-docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" \
-    --no-owner --no-privileges | gzip > "$BACKUP_FILE"
+if ! docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" \
+    --no-owner --no-privileges | gzip > "$BACKUP_FILE"; then
+    rm -f "$BACKUP_FILE"
+    echo "[ERROR] 备份失败，已删除不完整的备份文件"
+    exit 1
+fi
 
 FILE_SIZE=$(du -h "$BACKUP_FILE" | awk '{print $1}')
 echo "[OK] 备份完成: $(basename "$BACKUP_FILE") (${FILE_SIZE})"
 
 # ─── 清理旧备份，只保留最新 KEEP_COUNT 个 ───
-BACKUP_LIST=($(ls -1t "${BACKUP_DIR}"/audiobook_backup_*.sql.gz 2>/dev/null))
+mapfile -t BACKUP_LIST < <(ls -1t "${BACKUP_DIR}"/audiobook_backup_*.sql.gz 2>/dev/null)
 TOTAL=${#BACKUP_LIST[@]}
 
 if [ "$TOTAL" -gt "$KEEP_COUNT" ]; then

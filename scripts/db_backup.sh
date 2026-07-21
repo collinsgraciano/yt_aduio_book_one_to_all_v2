@@ -14,12 +14,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "${PROJECT_ROOT}"
 
-# ─── 读取 .env 中的 POSTGRES_PASSWORD ───
-if [ -f .env ]; then
-    POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d'=' -f2- | tr -d '[:space:]')"
-fi
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-changeme_strong_password}"
-
 CONTAINER="audiobook_postgres"
 PG_USER="audiobook_app"
 PG_DB="audiobook"
@@ -57,7 +51,11 @@ fi
 
 # ─── 执行备份 ───
 echo "[1/2] 导出数据库..."
-docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" --no-owner --no-privileges | gzip > "$BACKUP_FILE"
+if ! docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" --no-owner --no-privileges | gzip > "$BACKUP_FILE"; then
+    rm -f "$BACKUP_FILE"
+    echo "  [x] 备份失败，已删除不完整的备份文件"
+    exit 1
+fi
 
 FILE_SIZE=$(du -h "$BACKUP_FILE" | awk '{print $1}')
 echo "  ✓ 备份完成: ${FILE_SIZE}"
@@ -79,11 +77,11 @@ echo "  备份完成: ${BACKUP_FILE} (${FILE_SIZE})"
 echo "  恢复命令: bash scripts/db_restore.sh ${BACKUP_FILE}"
 echo "═══════════════════════════════════════════════════"
 
-# ─── 清理旧备份（保留最近 10 个）───
+# ─── 清理旧备份（保留最近 7 个）───
 BACKUP_COUNT=$(ls -1 "${BACKUP_DIR}"/audiobook_backup_*.sql.gz 2>/dev/null | wc -l)
-if [ "$BACKUP_COUNT" -gt 10 ]; then
-    echo "  清理旧备份（保留最近 10 个）..."
-    ls -1t "${BACKUP_DIR}"/audiobook_backup_*.sql.gz | tail -n +11 | while read -r old_file; do
+if [ "$BACKUP_COUNT" -gt 7 ]; then
+    echo "  清理旧备份（保留最近 7 个）..."
+    ls -1t "${BACKUP_DIR}"/audiobook_backup_*.sql.gz | tail -n +8 | while read -r old_file; do
         rm -f "$old_file"
         echo "  已删除: $(basename "$old_file")"
     done

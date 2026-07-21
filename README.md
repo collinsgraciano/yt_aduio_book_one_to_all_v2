@@ -41,6 +41,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 |------|------|------|
 | web | 59386 | FastAPI Web 服务 |
 | postgres | 5432 | PostgreSQL 16 |
+| vps-relay | 38080 | HF 中继调度器（任务调度 + 凭证中继） |
 
 ## 技术栈
 
@@ -50,11 +51,12 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 | 数据库 | PostgreSQL 16（Docker 内置） |
 | 前端 | Jinja2 服务端渲染（无前端构建步骤） |
 | 任务执行 | Python `threading.Thread`（无需 Redis/Celery） |
-| 容器 | Docker Compose（web + postgres 两服务） |
+| 容器 | Docker Compose（web + postgres + vps-relay 三服务） |
 
 ## 文档
 
-- [部署指南.md](部署指南.md) — 完整部署教程（首次部署、日常更新、OAuth 配置、常见问题）
+- [部署指南.md](部署指南.md) — 完整部署教程（首次部署、日常更新、HF 外包、OAuth 配置、常见问题）
+- [hf_workers/README.md](hf_workers/README.md) — HF 外包架构详细说明（架构设计、API 参考、故障排查）
 - [数据库备份恢复迁移指南.md](数据库备份恢复迁移指南.md) — 备份、恢复、从旧项目迁移
 - [CHANGES.md](CHANGES.md) — v2 重构变更记录
 
@@ -62,7 +64,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ```
 v2/
-├── docker-compose.yml          # 主编排配置（web + postgres）
+├── docker-compose.yml          # 主编排配置（web + postgres + vps-relay）
 ├── docker-compose.dev.yml      # 开发环境覆盖（热重载）
 ├── .env.example                # 环境变量模板
 ├── requirements.txt            # Python 依赖
@@ -80,5 +82,5 @@ v2/
 │   └── migrate_data.sh         # 从旧项目迁移数据
 ├── backend/                    # Web 管理系统（FastAPI）
 ├── pipeline/                   # 核心处理流水线
-└── hf_workers/                 # HF 外包架构（独立部署）
+└── hf_workers/                 # HF 外包架构（中继随主项目部署，Worker 部署在 HF Space）
 ```
