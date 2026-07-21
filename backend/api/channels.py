@@ -34,7 +34,7 @@ def create_channel(body: ChannelCreate):
         raise HTTPException(status_code=409, detail="频道名已存在")
     channel = channel_service.create_channel(
         body.channel_name, body.display_name or "",
-        body.description or "", body.oauth_client_secret,
+        body.description or "", body.oauth_client_secret, body.proxy or "",
     )
     return {"message": "频道创建成功", "channel": channel}
 
@@ -43,7 +43,7 @@ def create_channel(body: ChannelCreate):
 def update_channel(channel_name: str, body: ChannelUpdate):
     """更新频道信息。"""
     count = channel_service.update_channel(
-        channel_name, body.display_name, body.description, body.is_active,
+        channel_name, body.display_name, body.description, body.is_active, body.proxy,
     )
     if count == 0:
         raise HTTPException(status_code=404, detail="频道不存在")

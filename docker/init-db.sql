@@ -100,10 +100,13 @@ CREATE TABLE IF NOT EXISTS public.channels (
     is_active     boolean NOT NULL DEFAULT true,
     oauth_status  text NOT NULL DEFAULT 'pending',
     oauth_client_secret jsonb,
+    proxy         text,
     last_auth_at  timestamptz,
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
+-- 兼容已存在的表: 补充 proxy 列
+ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS proxy text;
 
 -- 8. channel_configs — 频道完整配置快照
 CREATE TABLE IF NOT EXISTS public.channel_configs (

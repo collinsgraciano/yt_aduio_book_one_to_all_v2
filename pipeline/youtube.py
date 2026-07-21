@@ -68,11 +68,12 @@ def _build_youtube_with_proxy(credentials, channel_name: str):
 
     log.info("🔀 频道 '%s' 使用代理: %s", channel_name, proxy_url)
 
-    # 解析 socks5://[ipv6]:port
     proxy_info = httplib2.ProxyInfo(
         proxy_type=httplib2.socks.PROXY_TYPE_SOCKS5,
         proxy_host=_extract_proxy_host(proxy_url),
         proxy_port=_extract_proxy_port(proxy_url),
+        proxy_user=_extract_proxy_user(proxy_url),
+        proxy_pass=_extract_proxy_pass(proxy_url),
     )
     http = httplib2.Http(proxy_info=proxy_info)
     return build("youtube", "v3", credentials=credentials, http=http, cache_discovery=False)
@@ -97,6 +98,28 @@ def _extract_proxy_port(proxy_url: str) -> int:
         addr = addr.split("@", 1)[-1]
     port_str = addr.rsplit(":", 1)[-1]
     return int(port_str)
+
+
+def _extract_proxy_user(proxy_url: str) -> str:
+    """从 socks5://user:pass@host:port 中提取用户名，无则返回空字符串。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" not in addr:
+        return ""
+    userpass = addr.split("@", 1)[0]
+    if ":" in userpass:
+        return userpass.split(":", 1)[0]
+    return userpass
+
+
+def _extract_proxy_pass(proxy_url: str) -> str:
+    """从 socks5://user:pass@host:port 中提取密码，无则返回空字符串。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" not in addr:
+        return ""
+    userpass = addr.split("@", 1)[0]
+    if ":" in userpass:
+        return userpass.split(":", 1)[1]
+    return ""
 
 try:
     YOUTUBE_SCHEDULE_LOCAL_TIMEZONE = ZoneInfo("Asia/Shanghai")
@@ -272,7 +295,15 @@ def authenticate_youtube_from_supabase(channel_name):
         if credentials.expired:
             if credentials.refresh_token:
                 log.info("🔄 YouTube 凭证已过期，尝试自动刷新令牌...")
-                credentials.refresh(GoogleAuthRequest())
+                # 通过频道代理刷新 Token
+                proxy_url = _resolve_channel_proxy(channel_name)
+                if proxy_url:
+                    log.info("🔀 频道 '%s' 刷新 Token 使用代理: %s", channel_name, proxy_url)
+                    _session = requests.Session()
+                    _session.proxies = {"http": proxy_url, "https": proxy_url}
+                    credentials.refresh(GoogleAuthRequest(session=_session))
+                else:
+                    credentials.refresh(GoogleAuthRequest())
                 refreshed_token = json.loads(credentials.to_json())
                 try:
                     execute_postgres(

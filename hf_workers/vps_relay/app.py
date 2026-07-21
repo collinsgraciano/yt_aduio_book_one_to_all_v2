@@ -138,6 +138,55 @@ def _fetch_global_setting(key: str) -> str:
     return row["setting_value"] if row else ""
 
 
+def _get_channel_proxy(channel_name: str) -> str:
+    """从 channels 表读取频道代理地址，未配置则返回空字符串。"""
+    row = _fetch_one("SELECT proxy FROM public.channels WHERE channel_name = %s", (channel_name,))
+    if not row:
+        return ""
+    return str(row.get("proxy") or "").strip()
+
+
+def _extract_proxy_host(proxy_url: str) -> str:
+    """从 socks5://[ipv6]:port 或 socks5://host:port 中提取主机。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" in addr:
+        addr = addr.split("@", 1)[-1]
+    if addr.startswith("["):
+        return addr.split("]")[0][1:]
+    return addr.rsplit(":", 1)[0]
+
+
+def _extract_proxy_port(proxy_url: str) -> int:
+    """从 socks5://[ipv6]:port 或 socks5://host:port 中提取端口。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" in addr:
+        addr = addr.split("@", 1)[-1]
+    port_str = addr.rsplit(":", 1)[-1]
+    return int(port_str)
+
+
+def _extract_proxy_user(proxy_url: str) -> str:
+    """从 socks5://user:pass@host:port 中提取用户名，无则返回空字符串。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" not in addr:
+        return ""
+    userpass = addr.split("@", 1)[0]
+    if ":" in userpass:
+        return userpass.split(":", 1)[0]
+    return userpass
+
+
+def _extract_proxy_pass(proxy_url: str) -> str:
+    """从 socks5://user:pass@host:port 中提取密码，无则返回空字符串。"""
+    addr = proxy_url.split("://", 1)[-1]
+    if "@" not in addr:
+        return ""
+    userpass = addr.split("@", 1)[0]
+    if ":" in userpass:
+        return userpass.split(":", 1)[1]
+    return ""
+
+
 # ═══════════════════════════════════════════════════════════
 # 配置持久化（面板可修改）
 # ═══════════════════════════════════════════════════════════
@@ -233,10 +282,11 @@ def tg_relay(path):
 # ═══════════════════════════════════════════════════════════
 
 def _load_youtube_client(channel_name: str):
-    """从数据库读取频道凭证并构建 YouTube 客户端。"""
+    """从数据库读取频道凭证并构建 YouTube 客户端（支持频道级代理）。"""
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request as GoogleAuthRequest
     from googleapiclient.discovery import build
+    import httplib2
 
     row = _fetch_one(
         "SELECT token_json FROM public.youtube_credentials WHERE channel_name = %s LIMIT 1",
@@ -252,14 +302,36 @@ def _load_youtube_client(channel_name: str):
     credentials = Credentials.from_authorized_user_info(
         token_info, scopes=["https://www.googleapis.com/auth/youtube"]
     )
+
+    # 读取频道代理
+    proxy_url = _get_channel_proxy(channel_name)
+
     if credentials.expired and credentials.refresh_token:
-        credentials.refresh(GoogleAuthRequest())
+        if proxy_url:
+            logger.info("🔀 频道 '%s' 刷新 Token 使用代理: %s", channel_name, proxy_url)
+            _session = requests.Session()
+            _session.proxies = {"http": proxy_url, "https": proxy_url}
+            credentials.refresh(GoogleAuthRequest(session=_session))
+        else:
+            credentials.refresh(GoogleAuthRequest())
         # 回写刷新后的 token
         refreshed = json.loads(credentials.to_json())
         _execute(
             "UPDATE public.youtube_credentials SET token_json = %s, updated_at = now() WHERE channel_name = %s",
             (Jsonb(refreshed), channel_name),
         )
+
+    if proxy_url:
+        logger.info("🔀 频道 '%s' YouTube 客户端使用代理: %s", channel_name, proxy_url)
+        proxy_info = httplib2.ProxyInfo(
+            proxy_type=httplib2.socks.PROXY_TYPE_SOCKS5,
+            proxy_host=_extract_proxy_host(proxy_url),
+            proxy_port=_extract_proxy_port(proxy_url),
+            proxy_user=_extract_proxy_user(proxy_url),
+            proxy_pass=_extract_proxy_pass(proxy_url),
+        )
+        http = httplib2.Http(proxy_info=proxy_info)
+        return build("youtube", "v3", credentials=credentials, http=http, cache_discovery=False)
 
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
 

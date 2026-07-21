@@ -48,16 +48,17 @@ def get_channel(channel_name: str) -> Optional[dict]:
 
 
 def create_channel(channel_name: str, display_name: str = "", description: str = "",
-                   oauth_client_secret: dict = None) -> dict:
+                   oauth_client_secret: dict = None, proxy: str = "") -> dict:
     """新增频道。"""
     row = fetch_one(
         sql.SQL("""
-            INSERT INTO public.channels (channel_name, display_name, description, oauth_client_secret)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO public.channels (channel_name, display_name, description, oauth_client_secret, proxy)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING *
         """),
         (channel_name, display_name or channel_name, description,
-         Jsonb(oauth_client_secret) if oauth_client_secret else None),
+         Jsonb(oauth_client_secret) if oauth_client_secret else None,
+         proxy or None),
     )
 
     # 创建默认配置（只保留频道级 Key，剔除全局 Key 防止覆盖全局设置）
@@ -68,6 +69,9 @@ def create_channel(channel_name: str, display_name: str = "", description: str =
     }
     channel_config["YOUTUBE_CHANNEL_NAME"] = channel_name
     channel_config["PROJECT_FLAG"] = channel_name
+    # 同步代理到频道配置中的 YOUTUBE_UPLOAD_PROXIES（pipeline 读取此 Key）
+    if proxy:
+        channel_config["YOUTUBE_UPLOAD_PROXIES"] = proxy
     execute(
         sql.SQL("""
             INSERT INTO public.channel_configs (channel_name, config_json)
@@ -81,8 +85,8 @@ def create_channel(channel_name: str, display_name: str = "", description: str =
 
 
 def update_channel(channel_name: str, display_name: str = None, description: str = None,
-                   is_active: bool = None) -> int:
-    """更新频道信息。"""
+                   is_active: bool = None, proxy: str = None) -> int:
+    """更新频道信息。proxy 传 None 表示不更新，传 "" 表示清除代理。"""
     updates = {}
     if display_name is not None:
         updates["display_name"] = display_name
@@ -90,6 +94,8 @@ def update_channel(channel_name: str, display_name: str = None, description: str
         updates["description"] = description
     if is_active is not None:
         updates["is_active"] = is_active
+    if proxy is not None:
+        updates["proxy"] = proxy or None
 
     if not updates:
         return 0
@@ -101,7 +107,27 @@ def update_channel(channel_name: str, display_name: str = None, description: str
     stmt = sql.SQL("UPDATE public.channels SET {}, updated_at = now() WHERE channel_name = {}").format(
         set_parts, sql.Placeholder()
     )
-    return execute(stmt, tuple(updates.values()) + (channel_name,))
+    count = execute(stmt, tuple(updates.values()) + (channel_name,))
+
+    # 如果代理有变更，同步到频道配置中的 YOUTUBE_UPLOAD_PROXIES
+    if proxy is not None:
+        row = fetch_one(
+            sql.SQL("SELECT config_json FROM public.channel_configs WHERE channel_name = %s"),
+            (channel_name,),
+        )
+        if row and row.get("config_json"):
+            config = dict(row["config_json"])
+            config["YOUTUBE_UPLOAD_PROXIES"] = proxy or ""
+            execute(
+                sql.SQL("""
+                    UPDATE public.channel_configs
+                    SET config_json = %s, config_version = config_version + 1, updated_at = now()
+                    WHERE channel_name = %s
+                """),
+                (Jsonb(config), channel_name),
+            )
+
+    return count
 
 
 def delete_channel(channel_name: str) -> bool:
@@ -242,3 +268,14 @@ def get_oauth_client_secret(channel_name: str) -> Optional[dict]:
     if not row or not row.get("oauth_client_secret"):
         return None
     return row["oauth_client_secret"]
+
+
+def get_channel_proxy(channel_name: str) -> str:
+    """获取频道的代理地址，未配置则返回空字符串。"""
+    row = fetch_one(
+        sql.SQL("SELECT proxy FROM public.channels WHERE channel_name = %s"),
+        (channel_name,),
+    )
+    if not row:
+        return ""
+    return str(row.get("proxy") or "").strip()

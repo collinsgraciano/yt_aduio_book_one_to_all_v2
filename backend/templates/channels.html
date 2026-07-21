@@ -26,6 +26,7 @@
                 <div class="mb-3"><label class="form-label">频道名（唯一标识）</label><input class="form-control" id="ch-name" placeholder="如: my_channel"></div>
                 <div class="mb-3"><label class="form-label">显示名</label><input class="form-control" id="ch-display" placeholder="可选"></div>
                 <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" id="ch-desc" rows="2"></textarea></div>
+                <div class="mb-3"><label class="form-label">代理地址</label><input class="form-control" id="ch-proxy" placeholder="如: socks5://127.0.0.1:1080（留空则直连）"><div class="form-text">该频道的所有网络操作（OAuth授权、Token刷新、YouTube上传等）都将通过此代理</div></div>
                 <div class="mb-3"><label class="form-label">OAuth client_secret.json</label><input class="form-control" type="file" id="ch-secret" accept=".json"></div>
             </div>
             <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" onclick="createChannel()">创建</button></div>
@@ -62,6 +63,7 @@ async function createChannel() {
     if (!name) { showToast('请输入频道名', 'warning'); return; }
     const display = document.getElementById('ch-display').value.trim();
     const desc = document.getElementById('ch-desc').value.trim();
+    const proxy = document.getElementById('ch-proxy').value.trim();
     const fileInput = document.getElementById('ch-secret');
     let secret = null;
     if (fileInput.files[0]) {
@@ -69,7 +71,7 @@ async function createChannel() {
     }
     try {
         await api('/api/channels', { method: 'POST', body: JSON.stringify({
-            channel_name: name, display_name: display, description: desc, oauth_client_secret: secret,
+            channel_name: name, display_name: display, description: desc, proxy: proxy, oauth_client_secret: secret,
         })});
         showToast('频道创建成功');
         bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();

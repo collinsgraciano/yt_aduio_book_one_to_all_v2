@@ -16,6 +16,7 @@
                 <tr><td>频道名</td><td><code id="ch-name">{{ channel_name }}</code></td></tr>
                 <tr><td>显示名</td><td id="ch-display">-</td></tr>
                 <tr><td>描述</td><td id="ch-desc">-</td></tr>
+                <tr><td>代理</td><td><input class="form-control form-control-sm d-inline-block" id="ch-proxy-input" style="width:auto;" placeholder="留空则直连"> <button class="btn btn-sm btn-outline-primary" onclick="saveProxy()">保存</button></td></tr>
                 <tr><td>OAuth 状态</td><td id="ch-oauth">-</td></tr>
                 <tr><td>创建时间</td><td id="ch-created">-</td></tr>
             </table>
@@ -86,6 +87,7 @@ async function loadChannel() {
         ]);
         document.getElementById('ch-display').textContent = ch.display_name || '-';
         document.getElementById('ch-desc').textContent = ch.description || '-';
+        document.getElementById('ch-proxy-input').value = ch.proxy || '';
         document.getElementById('ch-oauth').innerHTML = oauth.has_credentials
             ? `<span class="badge bg-success">已授权</span><br><small class="text-muted">${fmtTime(oauth.credential_updated_at)}</small>`
             : '<span class="badge bg-secondary">未授权</span>';
@@ -176,6 +178,14 @@ async function refreshToken() {
         const res = await api(`/api/oauth/${encodeURIComponent(CHANNEL)}/refresh`, { method: 'POST' });
         showToast(res.message || 'Token 已刷新');
     } catch (e) { showToast('刷新失败: ' + e.message, 'danger'); }
+}
+
+async function saveProxy() {
+    const proxy = document.getElementById('ch-proxy-input').value.trim();
+    try {
+        await api(`/api/channels/${encodeURIComponent(CHANNEL)}`, { method: 'PUT', body: JSON.stringify({ proxy }) });
+        showToast('代理已保存');
+    } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
 }
 
 async function revokeOAuth() {

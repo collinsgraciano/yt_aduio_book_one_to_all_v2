@@ -7,12 +7,21 @@ import secrets
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
+import requests
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from ..settings import settings as app_settings
 from ..database import fetch_one, execute
-from .channel_service import get_oauth_client_secret, update_oauth_status
+from .channel_service import get_oauth_client_secret, update_oauth_status, get_channel_proxy
+
+
+def _get_proxy_dict(channel_name: str) -> dict:
+    """获取频道的代理配置，返回 requests 格式的 proxies dict。无代理时返回空 dict。"""
+    proxy = get_channel_proxy(channel_name)
+    if not proxy:
+        return {}
+    return {"http": proxy, "https": proxy}
 
 
 def _upsert_youtube_credentials(channel_name: str, token_dict: dict):
@@ -98,6 +107,9 @@ def handle_oauth_callback(code: str, state: str) -> str:
         state=state,
         redirect_uri=redirect_uri,
     )
+    proxy_dict = _get_proxy_dict(channel_name)
+    if proxy_dict:
+        flow.oauth2session.proxies = proxy_dict
     flow.fetch_token(code=code)
     creds = flow.credentials
     token_dict = json.loads(creds.to_json())
@@ -133,6 +145,9 @@ def handle_manual_oauth(channel_name: str, callback_url: str) -> dict:
         scopes=[app_settings.youtube_scopes],
         redirect_uri=redirect_uri,
     )
+    proxy_dict = _get_proxy_dict(channel_name)
+    if proxy_dict:
+        flow.oauth2session.proxies = proxy_dict
     flow.fetch_token(code=code)
     creds = flow.credentials
     token_dict = json.loads(creds.to_json())
@@ -180,7 +195,11 @@ def refresh_oauth_token(channel_name: str) -> dict:
     if not credentials.refresh_token:
         raise ValueError("缺少 refresh_token，无法自动刷新，请重新授权")
 
-    credentials.refresh(GoogleAuthRequest())
+    proxy_dict = _get_proxy_dict(channel_name)
+    session = requests.Session()
+    if proxy_dict:
+        session.proxies = proxy_dict
+    credentials.refresh(GoogleAuthRequest(session=session))
     refreshed_token = json.loads(credentials.to_json())
 
     _upsert_youtube_credentials(channel_name, refreshed_token)

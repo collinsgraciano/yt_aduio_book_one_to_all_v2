@@ -11,6 +11,7 @@ class ChannelBase(BaseModel):
     channel_name: str = Field(..., description="频道名（唯一标识）")
     display_name: Optional[str] = None
     description: Optional[str] = None
+    proxy: Optional[str] = Field(None, description="频道专用代理地址（如 socks5://127.0.0.1:1080），留空则直连")
 
 
 class ChannelCreate(ChannelBase):
@@ -20,6 +21,7 @@ class ChannelCreate(ChannelBase):
 class ChannelUpdate(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
+    proxy: Optional[str] = None
     is_active: Optional[bool] = None
 
 
