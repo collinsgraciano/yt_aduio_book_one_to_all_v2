@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════════════════════════════
+# 开发环境覆盖文件 — 挂载源码卷 + 热重载，改代码无需重建镜像
+# ═══════════════════════════════════════════════════════════════
+# 用法：
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  web:
+    command: >
+      uvicorn backend.main:app
+      --host 0.0.0.0
+      --port 59386
+      --reload
+      --reload-dir /app/backend
+    volumes:
+      - ./backend:/app/backend
+      - ./pipeline:/app/pipeline:ro
+      - output_data:/data/output
+      - music_data:/data/music
+    environment:
+      - DEV_MODE=true
+      - DATABASE_URL=postgresql://audiobook_app:${POSTGRES_PASSWORD:-changeme_strong_password}@postgres:5432/audiobook
+      - SECRET_KEY=${SECRET_KEY:-dev_secret_key_change_in_production}
+      - BASE_URL=${BASE_URL:-http://localhost:59386}
+      - APP_PASSWORD=${APP_PASSWORD:-inriynisse}
+      - OUTPUT_ROOT=/data/output
+      - MUSIC_DIR=/data/music
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+volumes:
+  music_data:
