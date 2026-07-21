@@ -104,3 +104,32 @@ def _capture_logs():
 
 # ============================================================================
 # Pipeline 准备：导入路径 + 串行锁 + runtime config
+
+def _acquire_pipeline_lock() -> tuple[bool, str | None]:
+    """尝试获取 pipeline 串行锁（非阻塞）。
+
+    如果锁已被占用（有 pipeline 任务正在运行），立即返回失败。
+    """
+    from ..services.task_service import _pipeline_lock
+
+    ok = _pipeline_lock.acquire(blocking=False)
+    if ok:
+        return True, None
+    return False, "Pipeline 正在运行中，请等待任务完成后再测试"
+
+
+def _release_pipeline_lock():
+    """释放 pipeline 串行锁。"""
+    from ..services.task_service import _pipeline_lock
+
+    _pipeline_lock.release()
+
+
+def _build_test_config(channel_name: str = "") -> dict:
+    """构建测试用 runtime config（global_settings + 频道覆盖）。"""
+    from ..services.config_service import build_runtime_config, get_global_setting
+
+    if not channel_name:
+        channel_name = get_global_setting("YOUTUBE_CHANNEL_NAME") or ""
+
+    return build_runtime_config(channel_name)
