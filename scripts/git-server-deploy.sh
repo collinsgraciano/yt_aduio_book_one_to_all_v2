@@ -109,6 +109,38 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 fi
 echo ""
 
+# ─── 2.7 检查 5432 端口占用（关闭系统自带 PostgreSQL）───
+echo "[2.7/4] 检查 5432 端口占用..."
+PORT_5432_OCCUPIED=$(ss -tlnp 2>/dev/null | grep ':5432 ' || echo "")
+if [ -n "$PORT_5432_OCCUPIED" ]; then
+    PORT_5432_PID=$(echo "$PORT_5432_OCCUPIED" | head -1 | sed -n 's/.*pid=\([0-9]*\).*/\1/p')
+    PORT_5432_PROC=$(ps -p "${PORT_5432_PID}" -o comm= 2>/dev/null || echo "unknown")
+    echo "  [!] 端口 5432 被占用: PID=${PORT_5432_PID} (${PORT_5432_PROC})"
+
+    # 尝试找到并停止系统 PostgreSQL 服务
+    PG_SERVICE=$(systemctl list-units --type=service --state=running 2>/dev/null \
+        | grep -oE 'postgresql[^ ]*' | head -1 || echo "")
+    if [ -n "$PG_SERVICE" ]; then
+        echo "  > 停止系统 PostgreSQL 服务: ${PG_SERVICE}"
+        systemctl stop "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已停止 ${PG_SERVICE}"
+        systemctl disable "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已禁用开机自启 ${PG_SERVICE}"
+    else
+        echo "  [!] 未找到 PostgreSQL systemd 服务，尝试直接终止进程..."
+        kill "$PORT_5432_PID" 2>/dev/null && echo "  ✓ 已终止进程 ${PORT_5432_PID}"
+    fi
+
+    # 二次确认端口已释放
+    sleep 2
+    if ss -tlnp 2>/dev/null | grep -q ':5432 '; then
+        echo "  [x] 端口 5432 仍被占用，请手动处理: ss -tlnp | grep 5432"
+        exit 1
+    fi
+    echo "  ✓ 端口 5432 已释放"
+else
+    echo "  ✓ 端口 5432 未被占用"
+fi
+echo ""
+
 # ─── 3. 智能构建与重启 ───
 echo "[3/4] Docker 构建..."
 
