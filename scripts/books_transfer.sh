@@ -5,6 +5,9 @@
 # 用法：
 #   bash scripts/books_transfer.sh --dsn "postgresql://USER:PASS@HOST:PORT/DB"
 #   bash scripts/books_transfer.sh --dsn "postgresql://USER:PASS@HOST:PORT/DB" --force
+#   bash scripts/books_transfer.sh --dsn "..." --container my_pg_container
+#   bash scripts/books_transfer.sh --dsn "..." --bg
+#   bash scripts/books_transfer.sh --dsn "..." --bg --force
 #
 # 原理：源容器 pg_dump books → 管道 → 源容器 psql 连目标库导入
 # ═══════════════════════════════════════════════════════════════
@@ -21,29 +24,35 @@ ok()   { echo -e "\033[32m[OK]\033[0m $*"; }
 warn() { echo -e "\033[33m[WARN]\033[0m $*"; }
 error(){ echo -e "\033[31m[ERROR]\033[0m $*"; }
 
-# ─── 配置 ───
+# ─── 默认配置 ───
 CONTAINER="audiobook_postgres"
 PG_USER="audiobook_app"
 PG_DB="audiobook"
 TABLE="public.books"
 TARGET_DSN=""
 FORCE=false
+BG_MODE=false
 
 # ─── 解析参数 ───
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dsn)     TARGET_DSN="$2"; shift 2 ;;
-        --force)   FORCE=true; shift ;;
+        --dsn)       TARGET_DSN="$2"; shift 2 ;;
+        --container) CONTAINER="$2"; shift 2 ;;
+        --force)     FORCE=true; shift ;;
+        --bg)        BG_MODE=true; shift ;;
         -h|--help)
-            echo "用法: bash scripts/books_transfer.sh --dsn \"postgresql://USER:PASS@HOST:PORT/DB\""
+            echo "用法: bash scripts/books_transfer.sh --dsn \"postgresql://USER:PASS@HOST:PORT/DB\" [选项]"
             echo ""
             echo "参数:"
-            echo "  --dsn <连接串>   目标 VPS 的 PostgreSQL 连接字符串（必须）"
-            echo "  --force          跳过确认提示"
+            echo "  --dsn <连接串>      目标 VPS 的 PostgreSQL 连接字符串（必须）"
+            echo "  --container <名称>   源 PostgreSQL 容器名（默认 audiobook_postgres）"
+            echo "  --force              跳过确认提示"
+            echo "  --bg                 后台运行，日志输出到 backups/transfer.log"
             echo ""
             echo "示例:"
-            echo "  bash scripts/books_transfer.sh --dsn \"postgresql://audiobook_app:inriynisse1991@85.121.48.55:5432/audiobook\""
-            echo "  bash scripts/books_transfer.sh --dsn \"postgresql://audiobook_app:inriynisse1991@85.121.48.55:5432/audiobook\" --force"
+            echo "  bash scripts/books_transfer.sh --dsn \"postgresql://audiobook_app:pass@1.2.3.4:5432/audiobook\""
+            echo "  bash scripts/books_transfer.sh --dsn \"postgresql://audiobook_app:pass@1.2.3.4:5432/audiobook\" --force --bg"
+            echo "  bash scripts/books_transfer.sh --dsn \"...\" --container my_pg --force"
             exit 0
             ;;
         *) error "未知参数: $1"; echo "  使用 --help 查看用法"; exit 1 ;;
@@ -56,9 +65,33 @@ if [ -z "$TARGET_DSN" ]; then
     exit 1
 fi
 
+# ─── 后台运行模式 ───
+if [ "$BG_MODE" = true ]; then
+    LOG_FILE="${PROJECT_ROOT}/backups/transfer.log"
+    mkdir -p "$(dirname "$LOG_FILE")"
+    # 去掉 --bg 参数，重新调用自身
+    REEXEC_ARGS=()
+    for arg in "$@"; do
+        [ "$arg" != "--bg" ] && REEXEC_ARGS+=("$arg")
+    done
+    nohup bash "${BASH_SOURCE[0]}" "${REEXEC_ARGS[@]}" > "$LOG_FILE" 2>&1 &
+    echo "═══════════════════════════════════════════════════"
+    echo "  后台运行已启动"
+    echo "  日志: ${LOG_FILE}"
+    echo "  PID:  $!"
+    echo "═══════════════════════════════════════════════════"
+    echo ""
+    echo "  查看进度: tail -f ${LOG_FILE}"
+    echo "  确认运行: ps -p $!"
+    exit 0
+fi
+
 # ─── 检查源容器 ───
 if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
     error "源容器 ${CONTAINER} 未运行"
+    echo "  可用 --container 指定其他容器名"
+    echo "  当前运行的容器:"
+    docker ps --format '    {{.Names}}' | grep -i postgres || echo "    （无 postgres 相关容器）"
     exit 1
 fi
 
@@ -128,12 +161,10 @@ info "正在从源导出并直连目标导入..."
 
 set +e
 {
-    echo "SET session_replication_role = replica;"
     echo "TRUNCATE ${TABLE} CASCADE;"
     docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" \
         --data-only --column-inserts --no-owner --no-privileges \
         --table="$TABLE"
-    echo "SET session_replication_role = DEFAULT;"
 } | docker exec -i "$CONTAINER" psql "$TARGET_DSN" 2>&1 | grep -v "^$"
 TRANSFER_STATUS=${PIPESTATUS[1]}
 set -e
