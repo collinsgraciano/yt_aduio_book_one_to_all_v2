@@ -109,7 +109,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 fi
 echo ""
 
-# ─── 2.7 检查 5432 端口占用（关闭系统自带 PostgreSQL）───
+# ─── 2.7 检查 5432 端口占用（关闭系统自带 PostgreSQL / 残留容器）───
 echo "[2.7/4] 检查 5432 端口占用..."
 PORT_5432_OCCUPIED=$(ss -tlnp 2>/dev/null | grep ':5432 ' || echo "")
 if [ -n "$PORT_5432_OCCUPIED" ]; then
@@ -117,16 +117,27 @@ if [ -n "$PORT_5432_OCCUPIED" ]; then
     PORT_5432_PROC=$(ps -p "${PORT_5432_PID}" -o comm= 2>/dev/null || echo "unknown")
     echo "  [!] 端口 5432 被占用: PID=${PORT_5432_PID} (${PORT_5432_PROC})"
 
-    # 尝试找到并停止系统 PostgreSQL 服务
-    PG_SERVICE=$(systemctl list-units --type=service --state=running 2>/dev/null \
-        | grep -oE 'postgresql[^ ]*' | head -1 || echo "")
-    if [ -n "$PG_SERVICE" ]; then
-        echo "  > 停止系统 PostgreSQL 服务: ${PG_SERVICE}"
-        systemctl stop "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已停止 ${PG_SERVICE}"
-        systemctl disable "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已禁用开机自启 ${PG_SERVICE}"
+    if [ "$PORT_5432_PROC" = "docker-proxy" ] || [ "$PORT_5432_PROC" = "docker" ]; then
+        # ─── 情况 A: Docker 容器占用了端口 ───
+        echo "  > 检测到 Docker 容器占用端口"
+        OLD_PG_CONTAINER=$(docker ps --filter "publish=5432" --format '{{.Names}}' 2>/dev/null | head -1 || echo "")
+        if [ -n "$OLD_PG_CONTAINER" ]; then
+            echo "  > 停止残留容器: ${OLD_PG_CONTAINER}"
+            docker stop "$OLD_PG_CONTAINER" 2>/dev/null && echo "  ✓ 已停止 ${OLD_PG_CONTAINER}"
+            docker rm "$OLD_PG_CONTAINER" 2>/dev/null
+        fi
     else
-        echo "  [!] 未找到 PostgreSQL systemd 服务，尝试直接终止进程..."
-        kill "$PORT_5432_PID" 2>/dev/null && echo "  ✓ 已终止进程 ${PORT_5432_PID}"
+        # ─── 情况 B: 系统自带 PostgreSQL 占用了端口 ───
+        PG_SERVICE=$(systemctl list-units --type=service --state=running 2>/dev/null \
+            | grep -oE 'postgresql[^ ]*' | head -1 || echo "")
+        if [ -n "$PG_SERVICE" ]; then
+            echo "  > 停止系统 PostgreSQL 服务: ${PG_SERVICE}"
+            systemctl stop "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已停止 ${PG_SERVICE}"
+            systemctl disable "$PG_SERVICE" 2>/dev/null && echo "  ✓ 已禁用开机自启 ${PG_SERVICE}"
+        else
+            echo "  [!] 未找到 PostgreSQL systemd 服务，尝试直接终止进程..."
+            kill "$PORT_5432_PID" 2>/dev/null && echo "  ✓ 已终止进程 ${PORT_5432_PID}"
+        fi
     fi
 
     # 二次确认端口已释放
