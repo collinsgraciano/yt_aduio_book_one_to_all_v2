@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import time
+import uuid
 import datetime as dt_module
 from collections import defaultdict as _podcast_defaultdict
 from io import BytesIO
@@ -1799,10 +1800,13 @@ def _podcast_upload_playlist_image_via_rest(youtube, body, image_path, playlist_
     session = AuthorizedSession(credentials)
     is_update = bool(body.get("id"))
     method = "PATCH" if is_update else "POST"
-    url = f"{_PODCAST_PLAYLIST_IMAGES_ENDPOINT}?part=snippet&uploadType=multipart"
+    upload_url = _PODCAST_PLAYLIST_IMAGES_ENDPOINT.replace(
+        "/youtube/v3/", "/upload/youtube/v3/"
+    )
+    url = f"{upload_url}?part=snippet&uploadType=multipart"
 
     metadata_json = json.dumps(body)
-    boundary = "---podcast_upload_boundary"
+    boundary = "podcast_upload_boundary_0x" + uuid.uuid4().hex[:8]
     with open(image_path, "rb") as f:
         image_bytes = f.read()
 
