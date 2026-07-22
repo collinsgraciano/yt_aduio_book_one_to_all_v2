@@ -465,10 +465,10 @@ def mix_with_bgm(
         else:
             effective_vol_offset = volume_offset_db
 
-        # ── BGM 首尾独立段：旁白前后加静音，给 Content ID 干净指纹参考 ──
+        # ── BGM 首尾独立段（仅 sidechain 模式）：旁白前后加静音，给 Content ID 干净指纹参考 ──
         narr_input_path = input_path
         narr_temp_path = None
-        if intro_outro_seconds > 0:
+        if intro_outro_seconds > 0 and ducking_mode == "sidechain":
             pad_ms = intro_outro_seconds * 1000
             silence = AudioSegment.silent(
                 duration=pad_ms, frame_rate=orig_audio.frame_rate,
@@ -549,6 +549,14 @@ def mix_with_bgm(
             log.warning("ffmpeg 叠加失败，回退到 pydub overlay")
 
         # 回退方案：pydub overlay（内存占用较高）
+        # sidechain 模式下 pydub 无法做侧链压缩，补偿增益到旧版安全电平
+        if ducking_mode == "sidechain":
+            compensate_db = volume_offset_db - bgm_base_gain_db
+            log.warning(
+                "pydub 回退：侧链压缩不可用，BGM 增益补偿 %.0fdB → %.0fdB",
+                bgm_base_gain_db, volume_offset_db,
+            )
+            bgm_music = bgm_music.apply_gain(compensate_db)
         log.info("🎛️ 混合音频叠加（pydub）...")
         mixed = orig_audio.overlay(bgm_music)
         del orig_audio, bgm_music
@@ -567,6 +575,11 @@ def mix_with_bgm(
         return True
     except Exception as e:
         log.error("音频混入失败: %s", e)
+        if narr_temp_path:
+            try:
+                os.remove(narr_temp_path)
+            except Exception:
+                pass
         return False
 
 
