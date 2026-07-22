@@ -37,3 +37,10 @@ class BgmMixRequest(BaseModel):
     dyn_vol: bool = True
     spec_shape: bool = True
     stereo_offset: float = 0.0
+    ducking_mode: str = "sidechain"
+    bgm_base_gain_db: int = -15
+    sc_threshold_db: int = -30
+    sc_ratio: int = 8
+    sc_attack_ms: int = 5
+    sc_release_ms: int = 400
+    intro_outro_seconds: int = 3

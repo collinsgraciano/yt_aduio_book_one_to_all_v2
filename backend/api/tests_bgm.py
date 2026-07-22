@@ -361,6 +361,13 @@ def bgm_mix(body: BgmMixRequest):
         "dyn_vol": body.dyn_vol,
         "spec_shape": body.spec_shape,
         "stereo_offset": body.stereo_offset,
+        "ducking_mode": body.ducking_mode,
+        "bgm_base_gain_db": body.bgm_base_gain_db,
+        "sc_threshold_db": body.sc_threshold_db,
+        "sc_ratio": body.sc_ratio,
+        "sc_attack_ms": body.sc_attack_ms,
+        "sc_release_ms": body.sc_release_ms,
+        "intro_outro_seconds": body.intro_outro_seconds,
     }
     _input_name = body.input_file
 
@@ -388,7 +395,9 @@ def bgm_mix(body: BgmMixRequest):
                     f"[BGM测试] 参数: vol_offset={_params['volume_offset_db']}dB, "
                     f"hp={_params['highpass_freq']}Hz, "
                     f"fade={_params['fade_duration_ms']}ms, "
-                    f"dyn_vol={_params['dyn_vol']}, spec_shape={_params['spec_shape']}",
+                    f"dyn_vol={_params['dyn_vol']}, spec_shape={_params['spec_shape']}, "
+                    f"ducking={_params['ducking_mode']}, base_gain={_params['bgm_base_gain_db']}dB, "
+                    f"intro_outro={_params['intro_outro_seconds']}s",
                     flush=True,
                 )
                 job_ref["status"] = "running"
@@ -409,6 +418,13 @@ def bgm_mix(body: BgmMixRequest):
                     dyn_vol=_params["dyn_vol"],
                     spec_shape=_params["spec_shape"],
                     stereo_offset=_params["stereo_offset"],
+                    ducking_mode=_params["ducking_mode"],
+                    bgm_base_gain_db=_params["bgm_base_gain_db"],
+                    sc_threshold_db=_params["sc_threshold_db"],
+                    sc_ratio=_params["sc_ratio"],
+                    sc_attack_ms=_params["sc_attack_ms"],
+                    sc_release_ms=_params["sc_release_ms"],
+                    intro_outro_seconds=_params["intro_outro_seconds"],
                 )
                 elapsed = time.time() - t0
 

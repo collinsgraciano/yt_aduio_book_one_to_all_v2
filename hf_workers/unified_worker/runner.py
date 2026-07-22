@@ -520,6 +520,13 @@ def run_bgm_test(params: dict, config: dict) -> dict:
                     "dyn_vol": params.get("dyn_vol", True),
                     "spec_shape": params.get("spec_shape", True),
                     "stereo_offset": params.get("stereo_offset", 0.0),
+                    "ducking_mode": params.get("ducking_mode", "sidechain"),
+                    "bgm_base_gain_db": params.get("bgm_base_gain_db", -15),
+                    "sc_threshold_db": params.get("sc_threshold_db", -30),
+                    "sc_ratio": params.get("sc_ratio", 8),
+                    "sc_attack_ms": params.get("sc_attack_ms", 5),
+                    "sc_release_ms": params.get("sc_release_ms", 400),
+                    "intro_outro_seconds": params.get("intro_outro_seconds", 3),
                 }
                 print(f"[BGM测试] 参数: {mix_params}", flush=True)
 

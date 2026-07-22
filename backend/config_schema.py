@@ -200,6 +200,41 @@ CONFIG_SCHEMA: dict[str, dict] = {
         "type": "float", "category": "🔊 音频处理", "label": "立体声偏移",
         "default": 0.0, "min": 0, "max": 1,
     },
+    "BGM_DUCKING_MODE": {
+        "type": "enum", "category": "🔊 音频处理", "label": "BGM降噪模式",
+        "default": "sidechain", "options": ["envelope", "sidechain"],
+        "description": "sidechain=侧链压缩(旁白说话时BGM自动压低，静默时BGM升高利于Content ID检测)；envelope=旧版音量包络跟随",
+    },
+    "BGM_BASE_GAIN_DB": {
+        "type": "int", "category": "🔊 音频处理", "label": "BGM基础增益(dB)",
+        "default": -15, "min": -40, "max": 0,
+        "description": "sidechain模式下BGM的基础增益，越高越易被Content ID检测（建议-15~-10）",
+    },
+    "BGM_DUCK_THRESHOLD_DB": {
+        "type": "int", "category": "🔊 音频处理", "label": "侧链阈值(dB)",
+        "default": -30, "min": -60, "max": 0,
+        "description": "旁白RMS超过此阈值时触发BGM压缩",
+    },
+    "BGM_DUCK_RATIO": {
+        "type": "int", "category": "🔊 音频处理", "label": "侧链压缩比",
+        "default": 8, "min": 1, "max": 20,
+        "description": "BGM被压缩的比率，越高则说话时BGM越安静",
+    },
+    "BGM_DUCK_ATTACK_MS": {
+        "type": "int", "category": "🔊 音频处理", "label": "侧链启动(ms)",
+        "default": 5, "min": 1, "max": 100,
+        "description": "旁白开始时BGM被压低的速度",
+    },
+    "BGM_DUCK_RELEASE_MS": {
+        "type": "int", "category": "🔊 音频处理", "label": "侧链释放(ms)",
+        "default": 400, "min": 50, "max": 3000,
+        "description": "旁白结束后BGM恢复的速度",
+    },
+    "BGM_INTRO_OUTRO_SECONDS": {
+        "type": "int", "category": "🔊 音频处理", "label": "BGM首尾段(秒)",
+        "default": 3, "min": 0, "max": 30,
+        "description": "每章首尾各添加N秒纯BGM段(无旁白)，给Content ID提供干净指纹参考",
+    },
     "LONG_AUDIO_SPLIT_TRIGGER_HOURS": {
         "type": "float", "category": "🔊 音频处理", "label": "分片触发阈值(小时)",
         "default": 12.0, "min": 1, "max": 48,
@@ -439,6 +474,8 @@ CHANNEL_SPECIFIC_KEYS = {
     "TARGET_CATEGORY",        # 图书分类过滤
     "MAX_PROCESS_COUNT",      # 最多处理书籍数
     "VOLUME_OFFSET_DB",       # BGM 音量偏移
+    "BGM_DUCKING_MODE",       # BGM 降噪模式（sidechain/envelope）
+    "BGM_BASE_GAIN_DB",       # BGM 基础增益（sidechain 模式）
     # YouTube 上传相关（每频道独立配置）
     "YOUTUBE_UPLOAD_PROXIES",  # 频道级 SOCKS5 代理
     "YOUTUBE_PRIVACY_STATUS",

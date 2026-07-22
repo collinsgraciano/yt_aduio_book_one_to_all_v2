@@ -439,19 +439,62 @@ def mix_with_bgm(
     dyn_vol=True,
     spec_shape=True,
     stereo_offset=0.0,
+    ducking_mode="sidechain",
+    bgm_base_gain_db=-15,
+    sc_threshold_db=-30,
+    sc_ratio=8,
+    sc_attack_ms=5,
+    sc_release_ms=400,
+    intro_outro_seconds=3,
 ) -> bool:
     try:
         music_files = get_all_music_files(music_dir)
         log.info("加载原音频: %s", os.path.basename(input_path))
         orig_audio = AudioSegment.from_file(input_path)
-
         analysis = analyze_audio(orig_audio)
+
+        # ── 侧链模式：跳过动态音量和频谱塑形，保留 BGM 原始指纹 ──
+        if ducking_mode == "sidechain":
+            dyn_vol = False
+            spec_shape = False
+            effective_vol_offset = bgm_base_gain_db
+            log.info(
+                "🎛️ BGM 侧链压缩模式: base_gain=%ddB threshold=%ddB ratio=%d:1",
+                bgm_base_gain_db, sc_threshold_db, sc_ratio,
+            )
+        else:
+            effective_vol_offset = volume_offset_db
+
+        # ── BGM 首尾独立段：旁白前后加静音，给 Content ID 干净指纹参考 ──
+        narr_input_path = input_path
+        narr_temp_path = None
+        if intro_outro_seconds > 0:
+            pad_ms = intro_outro_seconds * 1000
+            silence = AudioSegment.silent(
+                duration=pad_ms, frame_rate=orig_audio.frame_rate,
+            )
+            orig_audio = silence + orig_audio + silence
+            log.info(
+                "BGM 首尾独立段: +%ds/+%ds (Content ID 参考)",
+                intro_outro_seconds, intro_outro_seconds,
+            )
+            # 将 padded 旁白写入临时 WAV，供 ffmpeg 作为输入
+            narr_temp = tempfile.NamedTemporaryFile(
+                suffix=".wav",
+                delete=False,
+                dir=os.path.dirname(output_path) or ".",
+            )
+            narr_temp_path = narr_temp.name
+            narr_temp.close()
+            orig_audio.export(narr_temp_path, format="wav")
+            narr_input_path = narr_temp_path
+
         bgm_music = prepare_copyright_music(
             music_files,
             len(orig_audio),
             orig_audio,
             analysis,
-            volume_offset_db,
+            effective_vol_offset,
             highpass_freq,
             fade_duration_ms,
             min_volume_db,
@@ -481,12 +524,26 @@ def mix_with_bgm(
         ok_mix = False
         if shutil.which("ffmpeg"):
             log.info("🎛️ 混合音频叠加（ffmpeg 流式，避免内存峰值）...")
-            ok_mix = _ffmpeg_overlay(input_path, bgm_music, output_path)
+            ok_mix = _ffmpeg_overlay(
+                narr_input_path,
+                bgm_music,
+                output_path,
+                ducking_mode=ducking_mode,
+                sc_threshold=sc_threshold_db,
+                sc_ratio=sc_ratio,
+                sc_attack=sc_attack_ms / 1000.0,
+                sc_release=sc_release_ms / 1000.0,
+            )
             if ok_mix:
                 # 叠加成功后释放大对象
                 del orig_audio, bgm_music
                 gc.collect()
                 load_music_segment_cached.cache_clear()
+                if narr_temp_path:
+                    try:
+                        os.remove(narr_temp_path)
+                    except Exception:
+                        pass
                 log.info("✅ 混音已保存: %s", os.path.basename(output_path))
                 return True
             log.warning("ffmpeg 叠加失败，回退到 pydub overlay")
@@ -501,6 +558,11 @@ def mix_with_bgm(
         mixed.export(output_path, format="mp3", bitrate="192k")
         del mixed
         gc.collect()
+        if narr_temp_path:
+            try:
+                os.remove(narr_temp_path)
+            except Exception:
+                pass
         log.info("✅ 混音已保存: %s", os.path.basename(output_path))
         return True
     except Exception as e:
@@ -515,6 +577,12 @@ def _ffmpeg_overlay(
     input_path: str,
     bgm_audio: AudioSegment,
     output_path: str,
+    *,
+    ducking_mode: str = "amix",
+    sc_threshold: float = -30,
+    sc_ratio: int = 8,
+    sc_attack: float = 0.005,
+    sc_release: float = 0.4,
 ) -> bool:
     """使用 ffmpeg 从磁盘叠加两个音频，避免 pydub overlay 的内存峰值。
 
@@ -522,6 +590,10 @@ def _ffmpeg_overlay(
     同时持有 orig + bgm + output = ~480MB。
     本函数将 BGM 写入临时 WAV 文件后释放 AudioSegment 对象，
     再用 ffmpeg 从磁盘流式叠加，内存占用极小。
+
+    ducking_mode:
+      - "amix": 旧版简单叠加（amix + volume=2.0）
+      - "sidechain": 侧链压缩（旁白说话时BGM自动压低，静默时BGM升高）
     """
     bgm_temp_path = None
     try:
@@ -535,15 +607,34 @@ def _ffmpeg_overlay(
         bgm_temp.close()
         bgm_audio.export(bgm_temp_path, format="wav")
 
-        # amix=inputs=2:duration=first → 输出长度匹配第一路输入
-        # dropout_transition=0 → 无过渡淡出
-        # volume=2.0 → 抵消 amix 默认的除以2归一化，等效于直接相加+裁剪
+        if ducking_mode == "sidechain":
+            # 侧链压缩：旁白作为 sidechain key，BGM 被压缩
+            # 旁白 RMS 超过 threshold 时 → BGM 被压低 ratio:1
+            # 旁白静默时 → BGM 以原始增益播放（Content ID 可检测）
+            filter_complex = (
+                f"[0:a]asplit=2[narr][sc_key];"
+                f"[1:a][sc_key]sidechaincompress="
+                f"threshold={sc_threshold}:ratio={sc_ratio}:"
+                f"attack={sc_attack}:release={sc_release}[bgm_ducked];"
+                f"[narr][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=0,volume=2.0"
+            )
+            log.info(
+                "🎛️ 侧链压缩: threshold=%.0fdB ratio=%d:1 attack=%.0fms release=%.0fms",
+                sc_threshold, sc_ratio, sc_attack * 1000, sc_release * 1000,
+            )
+        else:
+            # amix=inputs=2:duration=first → 输出长度匹配第一路输入
+            # dropout_transition=0 → 无过渡淡出
+            # volume=2.0 → 抵消 amix 默认的除以2归一化，等效于直接相加+裁剪
+            filter_complex = (
+                "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,volume=2.0"
+            )
+
         cmd = [
             "ffmpeg", "-y",
             "-i", input_path,
             "-i", bgm_temp_path,
-            "-filter_complex",
-            "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0,volume=2.0",
+            "-filter_complex", filter_complex,
             "-c:a", "libmp3lame",
             "-b:a", "192k",
             output_path,
