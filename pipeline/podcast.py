@@ -1832,7 +1832,7 @@ def _podcast_sync_playlist_image(
 
 
 def _podcast_sync_split_playlist_podcast(result, state, book_record, book_name):
-    playlist_state = get_split_playlist_state(state)  # defined in pipeline.py
+    playlist_state = _get_split_playlist_state(state)
     playlist_id = str(playlist_state.get("playlist_id") or "").strip()
     if not playlist_id:
         raise RuntimeError("split playlist podcast sync requires playlist_id")
