@@ -105,7 +105,7 @@ function renderConfig(config, schema) {
     let hasContent = false;
     for (const [cat, items] of Object.entries(categories)) {
         // 筛选出频道专属配置（非全局 Key）
-        const channelItems = (items || []).filter(item => !globalKeys.has(item.key));
+        const channelItems = (items || []).filter(item => !globalKeys.has(item.key) && item.key !== 'YOUTUBE_UPLOAD_PROXIES');
         if (channelItems.length === 0) continue;
         hasContent = true;
         html += `<h6 class="text-primary mt-3 border-bottom pb-1">${cat}</h6><div class="row">`;

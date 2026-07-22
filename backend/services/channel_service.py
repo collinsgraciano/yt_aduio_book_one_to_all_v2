@@ -216,6 +216,15 @@ def save_channel_config(channel_name: str, config: dict) -> dict:
     if not str(coerced.get("PROJECT_FLAG", "")).strip():
         coerced["PROJECT_FLAG"] = channel_name
 
+    # 代理通过频道信息卡片管理，配置编辑器不显示此字段；
+    # 保存配置时从 channels.proxy 同步，避免被覆盖丢失
+    proxy_row = fetch_one(
+        sql.SQL("SELECT proxy FROM public.channels WHERE channel_name = %s"),
+        (channel_name,),
+    )
+    if proxy_row:
+        coerced["YOUTUBE_UPLOAD_PROXIES"] = str(proxy_row.get("proxy") or "").strip()
+
     row = fetch_one(
         sql.SQL("""
             INSERT INTO public.channel_configs (channel_name, config_json, config_version, updated_at)
