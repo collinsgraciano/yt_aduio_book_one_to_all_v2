@@ -322,6 +322,8 @@ def _load_youtube_client(channel_name: str):
         )
 
     if proxy_url:
+        if httplib2.socks is None:
+            raise RuntimeError(f"频道 '{channel_name}' 配置了代理 {proxy_url} 但 PySocks 未安装，无法使用代理。请安装 PySocks (pip install PySocks)")
         logger.info("🔀 频道 '%s' YouTube 客户端使用代理: %s", channel_name, proxy_url)
         proxy_info = httplib2.ProxyInfo(
             proxy_type=httplib2.socks.PROXY_TYPE_SOCKS5,
