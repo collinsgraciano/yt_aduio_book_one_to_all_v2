@@ -333,7 +333,8 @@ def _load_youtube_client(channel_name: str):
             proxy_pass=_extract_proxy_pass(proxy_url),
         )
         http = httplib2.Http(proxy_info=proxy_info)
-        return build("youtube", "v3", credentials=credentials, http=http, cache_discovery=False)
+        http = credentials.authorize(http)
+        return build("youtube", "v3", http=http, cache_discovery=False)
 
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
 
