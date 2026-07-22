@@ -1297,20 +1297,18 @@ def _trigger_worker_process(worker_url: str) -> bool:
 
 
 def _reset_stuck_jobs():
-    """重置超时的 processing 任务为 pending。"""
+    """删除超时的 processing 任务。"""
     try:
         count = _execute(
-            """UPDATE public.hf_jobs
-               SET status = 'pending', worker_id = NULL, claimed_at = NULL,
-                   retry_count = retry_count + 1
+            """DELETE FROM public.hf_jobs
                WHERE job_type = 'tg_cache_pipeline'
                  AND status = 'processing'
                  AND claimed_at < now() - make_interval(mins => %s)""",
             (int(_cfg("stuck_timeout_m", STUCK_TIMEOUT_M)),),
         )
         if count > 0:
-            logger.info("[调度] 重置 %d 个超时任务", count)
-            _scheduler_runtime["reset_count"] += count
+            logger.info("[调度] 删除 %d 个超时任务", count)
+        _scheduler_runtime["reset_count"] += count
         return count
     except Exception as e:
         logger.warning("[调度] 重置超时任务失败: %s", e)
