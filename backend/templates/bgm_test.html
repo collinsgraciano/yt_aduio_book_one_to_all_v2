@@ -243,6 +243,9 @@ const RELEVANT_KEYS = [
     "ENABLE_BGM_MIX", "MUSIC_DIR", "VOLUME_OFFSET_DB", "HIGHPASS_FREQ",
     "FADE_DURATION_MS", "MIN_VOLUME_DB", "ENABLE_DYNAMIC_VOLUME",
     "ENABLE_SPECTRAL_SHAPING", "STEREO_OFFSET",
+    "BGM_DUCKING_MODE", "BGM_BASE_GAIN_DB", "BGM_DUCK_THRESHOLD_DB",
+    "BGM_DUCK_RATIO", "BGM_DUCK_ATTACK_MS", "BGM_DUCK_RELEASE_MS",
+    "BGM_INTRO_OUTRO_SECONDS",
 ];
 let settingsSchema = {};
 
@@ -280,6 +283,10 @@ async function loadTestSettings() {
             } else if (schema.type === 'int') {
                 input = `<label class="form-label small fw-bold">${label}</label>
                     <input type="number" class="form-control form-control-sm" data-key="${key}" data-type="int" value="${rawVal}" ${schema.min !== undefined ? `min="${schema.min}"` : ''} ${schema.max !== undefined ? `max="${schema.max}"` : ''} ${readonly ? 'readonly' : ''}>`;
+            } else if (schema.type === 'enum') {
+                const opts = (schema.options || []).map(o => `<option value="${o}" ${o === rawVal ? 'selected' : ''}>${o}</option>`).join('');
+                input = `<label class="form-label small fw-bold">${label}</label>
+                    <select class="form-select form-select-sm" data-key="${key}" data-type="str" ${readonly ? 'disabled' : ''}>${opts}</select>`;
             } else {
                 input = `<label class="form-label small fw-bold">${label}</label>
                     <input type="text" class="form-control form-control-sm" data-key="${key}" data-type="str" value="${rawVal}" ${readonly ? 'readonly' : ''}>`;
