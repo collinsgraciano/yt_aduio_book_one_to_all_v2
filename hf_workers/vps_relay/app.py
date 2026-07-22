@@ -285,6 +285,7 @@ def _load_youtube_client(channel_name: str):
     """从数据库读取频道凭证并构建 YouTube 客户端（支持频道级代理）。"""
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request as GoogleAuthRequest
+    from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
     import httplib2
 
@@ -333,8 +334,8 @@ def _load_youtube_client(channel_name: str):
             proxy_pass=_extract_proxy_pass(proxy_url),
         )
         http = httplib2.Http(proxy_info=proxy_info)
-        http = credentials.authorize(http)
-        return build("youtube", "v3", http=http, cache_discovery=False)
+        authorized_http = AuthorizedHttp(credentials, http=http)
+        return build("youtube", "v3", http=authorized_http, cache_discovery=False)
 
     return build("youtube", "v3", credentials=credentials, cache_discovery=False)
 

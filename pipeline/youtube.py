@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
@@ -76,8 +77,8 @@ def _build_youtube_with_proxy(credentials, channel_name: str):
         proxy_pass=_extract_proxy_pass(proxy_url),
     )
     http = httplib2.Http(proxy_info=proxy_info)
-    http = credentials.authorize(http)
-    return build("youtube", "v3", http=http, cache_discovery=False)
+    authorized_http = AuthorizedHttp(credentials, http=http)
+    return build("youtube", "v3", http=authorized_http, cache_discovery=False)
 
 
 def _extract_proxy_host(proxy_url: str) -> str:
