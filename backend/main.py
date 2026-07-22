@@ -71,7 +71,9 @@ async def lifespan(app: FastAPI):
         db_execute(pg_sql.SQL("ALTER TABLE public.audiobook_chapters ADD COLUMN IF NOT EXISTS worker_id varchar(100)"))
         db_execute(pg_sql.SQL("ALTER TABLE public.audiobook_chapters ADD COLUMN IF NOT EXISTS claimed_at timestamptz"))
         db_execute(pg_sql.SQL("ALTER TABLE public.audiobook_chapters ADD COLUMN IF NOT EXISTS error_message text"))
-        # 5. 补充索引
+        # 5. channels 表补充 proxy 列
+        db_execute(pg_sql.SQL("ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS proxy text"))
+        # 6. 补充索引
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_audiobook_chapters_book_id ON public.audiobook_chapters(book_id)"))
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_audiobook_chapters_upload_status ON public.audiobook_chapters(upload_status)"))
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_chapters_book_status ON public.audiobook_chapters(book_id, upload_status)"))
@@ -113,7 +115,7 @@ async def lifespan(app: FastAPI):
                 updated_at     timestamptz NOT NULL DEFAULT now()
             )
         """))
-        logger.info("数据库迁移完成: run_tasks + global_settings + books + audiobook_chapters + hf_jobs 列/索引补全")
+        logger.info("数据库迁移完成: run_tasks + global_settings + books + channels + audiobook_chapters + hf_jobs 列/索引补全")
     except Exception as e:
         logger.warning(f"数据库迁移失败（非致命）: {e}")
 
