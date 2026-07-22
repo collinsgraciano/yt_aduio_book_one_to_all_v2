@@ -16,7 +16,7 @@
                 <tr><td>频道名</td><td><code id="ch-name">{{ channel_name }}</code></td></tr>
                 <tr><td>显示名</td><td id="ch-display">-</td></tr>
                 <tr><td>描述</td><td id="ch-desc">-</td></tr>
-                <tr><td>代理</td><td><input class="form-control form-control-sm d-inline-block" id="ch-proxy-input" style="width:auto;" placeholder="留空则直连"> <button class="btn btn-sm btn-outline-primary" onclick="saveProxy()">保存</button></td></tr>
+                <tr><td>代理</td><td><input class="form-control form-control-sm d-inline-block" id="ch-proxy-input" style="width:auto;" placeholder="留空则直连"> <button class="btn btn-sm btn-outline-primary" onclick="saveProxy()">保存</button> <button class="btn btn-sm btn-outline-info" onclick="testProxy('ch-proxy-input')">测试</button> <span id="proxy-test-result"></span></td></tr>
                 <tr><td>OAuth 状态</td><td id="ch-oauth">-</td></tr>
                 <tr><td>创建时间</td><td id="ch-created">-</td></tr>
             </table>
@@ -186,6 +186,21 @@ async function saveProxy() {
         await api(`/api/channels/${encodeURIComponent(CHANNEL)}`, { method: 'PUT', body: JSON.stringify({ proxy }) });
         showToast('代理已保存');
     } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
+}
+
+async function testProxy(inputId) {
+    const proxy = document.getElementById(inputId).value.trim();
+    if (!proxy) { showToast('请先填写代理地址', 'warning'); return; }
+    const el = document.getElementById('proxy-test-result');
+    el.innerHTML = '<span class="text-muted">测试中...</span>';
+    try {
+        const res = await api('/api/channels/test-proxy', { method: 'POST', body: JSON.stringify({ proxy }) });
+        if (res.ok) {
+            el.innerHTML = `<span class="text-success">✅ ${res.message}</span>`;
+        } else {
+            el.innerHTML = `<span class="text-danger">❌ ${res.message}</span>`;
+        }
+    } catch (e) { el.innerHTML = `<span class="text-danger">❌ ${e.message}</span>`; }
 }
 
 async function revokeOAuth() {

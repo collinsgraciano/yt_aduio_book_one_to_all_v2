@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import time
+import requests as _requests
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from ..models.channel import ChannelCreate, ChannelUpdate
 from ..services import channel_service
 
 router = APIRouter(prefix="/api/channels", tags=["频道管理"])
+
+
+class ProxyTestBody(BaseModel):
+    proxy: str
 
 
 @router.get("")
@@ -81,3 +88,30 @@ def save_channel_config(channel_name: str, body: dict):
 def get_oauth_status(channel_name: str):
     """获取频道 OAuth 状态。"""
     return channel_service.get_channel_oauth_status(channel_name)
+
+
+@router.post("/test-proxy")
+def test_proxy(body: ProxyTestBody):
+    """测试代理连通性：通过代理请求 YouTube，返回延迟和状态。"""
+    proxy = (body.proxy or "").strip()
+    if not proxy:
+        raise HTTPException(status_code=400, detail="代理地址不能为空")
+
+    proxies = {"http": proxy, "https": proxy}
+    start = time.time()
+    try:
+        resp = _requests.get("https://www.youtube.com", proxies=proxies, timeout=15)
+        latency_ms = int((time.time() - start) * 1000)
+        if resp.status_code == 200:
+            return {"ok": True, "latency_ms": latency_ms, "status_code": resp.status_code,
+                    "message": f"代理连通成功，延迟 {latency_ms}ms"}
+        return {"ok": False, "latency_ms": latency_ms, "status_code": resp.status_code,
+                "message": f"YouTube 返回 HTTP {resp.status_code}"}
+    except _requests.exceptions.ConnectTimeout:
+        return {"ok": False, "message": "连接超时（15s），代理不可用或地址错误"}
+    except _requests.exceptions.ProxyError as e:
+        return {"ok": False, "message": f"代理连接失败: {e}"}
+    except _requests.exceptions.ReadTimeout:
+        return {"ok": False, "message": "代理已连接但读取超时，带宽可能过小"}
+    except Exception as e:
+        return {"ok": False, "message": f"测试失败: {e}"}

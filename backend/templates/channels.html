@@ -26,7 +26,7 @@
                 <div class="mb-3"><label class="form-label">频道名（唯一标识）</label><input class="form-control" id="ch-name" placeholder="如: my_channel"></div>
                 <div class="mb-3"><label class="form-label">显示名</label><input class="form-control" id="ch-display" placeholder="可选"></div>
                 <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" id="ch-desc" rows="2"></textarea></div>
-                <div class="mb-3"><label class="form-label">代理地址</label><input class="form-control" id="ch-proxy" placeholder="如: socks5://127.0.0.1:1080（留空则直连）"><div class="form-text">该频道的所有网络操作（OAuth授权、Token刷新、YouTube上传等）都将通过此代理</div></div>
+                <div class="mb-3"><label class="form-label">代理地址</label><div class="input-group"><input class="form-control" id="ch-proxy" placeholder="如: socks5://127.0.0.1:1080（留空则直连）"><button class="btn btn-outline-info" type="button" onclick="testProxyNew()">测试</button></div><div class="form-text">该频道的所有网络操作（OAuth授权、Token刷新、YouTube上传等）都将通过此代理 <span id="new-proxy-test-result"></span></div></div>
                 <div class="mb-3"><label class="form-label">OAuth client_secret.json</label><input class="form-control" type="file" id="ch-secret" accept=".json"></div>
             </div>
             <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" onclick="createChannel()">创建</button></div>
@@ -86,6 +86,19 @@ async function deleteChannel(name) {
         showToast('频道已删除');
         loadChannels();
     } catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
+}
+
+async function testProxyNew() {
+    const proxy = document.getElementById('ch-proxy').value.trim();
+    if (!proxy) { showToast('请先填写代理地址', 'warning'); return; }
+    const el = document.getElementById('new-proxy-test-result');
+    el.innerHTML = '<span class="text-muted">测试中...</span>';
+    try {
+        const res = await api('/api/channels/test-proxy', { method: 'POST', body: JSON.stringify({ proxy }) });
+        el.innerHTML = res.ok
+            ? `<span class="text-success">✅ ${res.message}</span>`
+            : `<span class="text-danger">❌ ${res.message}</span>`;
+    } catch (e) { el.innerHTML = `<span class="text-danger">❌ ${e.message}</span>`; }
 }
 
 loadChannels();
