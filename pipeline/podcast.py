@@ -1789,6 +1789,63 @@ def _podcast_resolve_playlist_image_status(images, podcast_enabled):
     }
 
 
+def _podcast_upload_playlist_image_via_rest(youtube, body, image_path, playlist_id):
+    """通过 REST multipart/related 上传播放列表封面图片。
+
+    google-api-python-client 的 playlistImages().insert/update() 不支持 media_body，
+    因此用 AuthorizedSession 直接发送 multipart 请求。
+    """
+    credentials = _podcast_extract_youtube_credentials(youtube)
+    session = AuthorizedSession(credentials)
+    is_update = bool(body.get("id"))
+    method = "PATCH" if is_update else "POST"
+    url = f"{_PODCAST_PLAYLIST_IMAGES_ENDPOINT}?part=snippet&uploadType=multipart"
+
+    metadata_json = json.dumps(body)
+    boundary = "---podcast_upload_boundary"
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+
+    multipart_body = (
+        f"--{boundary}\r\n"
+        f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{metadata_json}\r\n"
+        f"--{boundary}\r\n"
+        f"Content-Type: image/jpeg\r\n\r\n"
+    ).encode("utf-8") + image_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    headers = {
+        "Content-Type": f"multipart/related; boundary={boundary}",
+        "Content-Length": str(len(multipart_body)),
+    }
+
+    retries = max(1, int(getattr(cfg, "YOUTUBE_PODCAST_YT_RETRIES", 5) or 5))
+    last_error = None
+    for attempt_index in range(retries):
+        response = session.request(method, url, data=multipart_body, headers=headers, timeout=120)
+        if response.status_code < 400:
+            return response.json()
+        try:
+            payload = response.json()
+        except Exception:
+            payload = response.text
+        last_error = RuntimeError(
+            f"playlistImages.{'update' if is_update else 'insert'} failed: "
+            f"status={response.status_code} payload={payload}"
+        )
+        if response.status_code not in {408, 409, 429, 500, 502, 503, 504} or attempt_index >= retries - 1:
+            raise last_error
+        sleep_seconds = _podcast_youtube_retry_sleep_seconds(attempt_index)
+        _podcast_progress(
+            f"playlistImages.{'update' if is_update else 'insert'} retrying in {sleep_seconds:.0f}s "
+            f"for playlist={playlist_id} status={response.status_code}"
+        )
+        time.sleep(sleep_seconds)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"playlistImages.{'update' if is_update else 'insert'} failed for playlist={playlist_id}")
+
+
 def _podcast_sync_playlist_image(
     youtube,
     playlist_id,
@@ -1807,19 +1864,10 @@ def _podcast_sync_playlist_image(
             "type": "hero",
         }
     }
-    media = MediaFileUpload(image_path, mimetype="image/jpeg")
-
     if hero_image.get("image_id"):
         body["id"] = hero_image["image_id"]
-        response = _podcast_execute_youtube_request(
-            youtube.playlistImages().update(part="snippet", body=body, media_body=media),
-            op_name=f"playlistImages.update:{playlist_id}",
-        )
-    else:
-        response = _podcast_execute_youtube_request(
-            youtube.playlistImages().insert(part="snippet", body=body, media_body=media),
-            op_name=f"playlistImages.insert:{playlist_id}",
-        )
+
+    response = _podcast_upload_playlist_image_via_rest(youtube, body, image_path, playlist_id)
 
     snippet = response.get("snippet") or {}
     return {
