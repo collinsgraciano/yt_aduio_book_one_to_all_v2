@@ -529,10 +529,10 @@ def mix_with_bgm(
                 bgm_music,
                 output_path,
                 ducking_mode=ducking_mode,
-                sc_threshold=sc_threshold_db,
+                sc_threshold_db=sc_threshold_db,
                 sc_ratio=sc_ratio,
-                sc_attack=sc_attack_ms / 1000.0,
-                sc_release=sc_release_ms / 1000.0,
+                sc_attack_ms=sc_attack_ms,
+                sc_release_ms=sc_release_ms,
             )
             if ok_mix:
                 # 叠加成功后释放大对象
@@ -579,10 +579,10 @@ def _ffmpeg_overlay(
     output_path: str,
     *,
     ducking_mode: str = "amix",
-    sc_threshold: float = -30,
+    sc_threshold_db: float = -30,
     sc_ratio: int = 8,
-    sc_attack: float = 0.005,
-    sc_release: float = 0.4,
+    sc_attack_ms: int = 5,
+    sc_release_ms: int = 400,
 ) -> bool:
     """使用 ffmpeg 从磁盘叠加两个音频，避免 pydub overlay 的内存峰值。
 
@@ -611,16 +611,21 @@ def _ffmpeg_overlay(
             # 侧链压缩：旁白作为 sidechain key，BGM 被压缩
             # 旁白 RMS 超过 threshold 时 → BGM 被压低 ratio:1
             # 旁白静默时 → BGM 以原始增益播放（Content ID 可检测）
+            #
+            # ffmpeg sidechaincompress 参数单位：
+            #   threshold: 线性振幅 (0.000976563 ~ 1)，需从 dB 转换
+            #   attack/release: 毫秒 (0.01 ~ 2000/9000)
+            sc_threshold_linear = 10 ** (sc_threshold_db / 20.0)
             filter_complex = (
                 f"[0:a]asplit=2[narr][sc_key];"
                 f"[1:a][sc_key]sidechaincompress="
-                f"threshold={sc_threshold}:ratio={sc_ratio}:"
-                f"attack={sc_attack}:release={sc_release}[bgm_ducked];"
+                f"threshold={sc_threshold_linear}:ratio={sc_ratio}:"
+                f"attack={sc_attack_ms}:release={sc_release_ms}[bgm_ducked];"
                 f"[narr][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=0,volume=2.0"
             )
             log.info(
-                "🎛️ 侧链压缩: threshold=%.0fdB ratio=%d:1 attack=%.0fms release=%.0fms",
-                sc_threshold, sc_ratio, sc_attack * 1000, sc_release * 1000,
+                "🎛️ 侧链压缩: threshold=%.0fdB(%.4f) ratio=%d:1 attack=%dms release=%dms",
+                sc_threshold_db, sc_threshold_linear, sc_ratio, sc_attack_ms, sc_release_ms,
             )
         else:
             # amix=inputs=2:duration=first → 输出长度匹配第一路输入
