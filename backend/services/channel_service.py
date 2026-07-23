@@ -47,9 +47,28 @@ def get_channel(channel_name: str) -> Optional[dict]:
     )
 
 
+def _check_proxy_used_by(proxy: str, exclude_channel: str) -> str | None:
+    """检查代理是否已被其他频道使用，返回占用频道的名称，未被使用则返回 None。"""
+    row = fetch_one(
+        sql.SQL("""
+            SELECT channel_name FROM public.channels
+            WHERE proxy = %s AND channel_name != %s
+            LIMIT 1
+        """),
+        (proxy, exclude_channel),
+    )
+    return row["channel_name"] if row else None
+
+
 def create_channel(channel_name: str, display_name: str = "", description: str = "",
                    oauth_client_secret: dict = None, proxy: str = "") -> dict:
     """新增频道。"""
+    if proxy:
+        proxy = proxy.strip()
+        existing = _check_proxy_used_by(proxy, channel_name)
+        if existing:
+            raise ValueError(f"代理已被频道「{existing}」使用，不允许重复")
+
     row = fetch_one(
         sql.SQL("""
             INSERT INTO public.channels (channel_name, display_name, description, oauth_client_secret, proxy)
@@ -95,7 +114,12 @@ def update_channel(channel_name: str, display_name: str = None, description: str
     if is_active is not None:
         updates["is_active"] = is_active
     if proxy is not None:
-        updates["proxy"] = proxy or None
+        proxy_val = (proxy or "").strip()
+        if proxy_val:
+            existing = _check_proxy_used_by(proxy_val, channel_name)
+            if existing:
+                raise ValueError(f"代理已被频道「{existing}」使用，不允许重复")
+        updates["proxy"] = proxy_val or None
 
     if not updates:
         return 0
