@@ -77,14 +77,15 @@
             </div>
             <!-- 运行配置覆盖（可折叠） -->
             <div class="mt-2">
-                <a class="small text-muted text-decoration-none" data-bs-toggle="collapse" href="#overrides-collapse" role="button">
+                <a class="small text-muted text-decoration-none" data-bs-toggle="collapse" href="#overrides-collapse" role="button" onclick="onOverridesToggle()">
                     <i class="bi bi-sliders"></i> 运行配置覆盖（可选，留空则使用频道默认配置）
                 </a>
                 <div class="collapse mt-2" id="overrides-collapse">
-                    <textarea class="form-control form-control-sm font-monospace" id="sched-overrides" rows="4" placeholder='JSON 格式，如：&#10;{&#10;  "YOUTUBE_SCHEDULE_AFTER_HOURS": 48,&#10;  "YOUTUBE_DAILY_PUBLISH_LIMIT": 5&#10;}&#10;留空则使用频道默认运行配置。'></textarea>
-                    <div class="form-text small">
-                        覆盖的配置会随任务投递写入 hf_jobs.params，HF Worker 认领任务时会合并到运行配置中。
-                        仅影响此定时任务投递的任务，不修改频道本身的配置。
+                    <div id="overrides-editor">
+                        <p class="text-muted small"><span class="spinner-border spinner-border-sm"></span> 加载配置 Schema...</p>
+                    </div>
+                    <div class="form-text small mt-1">
+                        修改的字段会覆盖频道默认配置，仅影响此定时任务投递的任务，不修改频道本身的配置。未修改的字段保持频道默认值。
                     </div>
                 </div>
             </div>
@@ -182,6 +183,8 @@ let totalPages = 1;
 let selectedTasks = new Set();
 let selectedSchedTasks = new Set();
 let allChannels = [];
+let _categoriesLoaded = false;
+let _categoriesCache = [];
 
 // ═══════════════════════════════════════════
 // 定时任务
@@ -215,6 +218,11 @@ function updateChannelLabel() {
         label.textContent = display;
         label.className = '';
     }
+    // 频道选择变化时，如果配置覆盖面板已展开，重新加载以预填新频道配置
+    if (_overridesEditorLoaded) {
+        _overridesEditorLoaded = false;
+        loadOverridesEditor();
+    }
 }
 
 function getSelectedChannels() {
@@ -225,6 +233,145 @@ function getSelectedChannels() {
 }
 
 // ── 创建定时任务 ──
+// ── 运行配置覆盖编辑器 ──
+let _configSchema = null;
+let _overridesEditorLoaded = false;
+
+async function onOverridesToggle() {
+    // 首次展开时加载 schema + 渲染表单
+    if (!_overridesEditorLoaded) {
+        await loadOverridesEditor();
+    }
+}
+
+async function loadOverridesEditor() {
+    const editor = document.getElementById('overrides-editor');
+    try {
+        if (!_configSchema) {
+            const [schema] = await Promise.all([
+                api('/api/config/schema'),
+            ]);
+            _configSchema = schema;
+        }
+
+        // 尝试加载选中频道的当前配置（用于预填）
+        const selected = getSelectedChannels();
+        let channelConfig = null;
+        if (selected.length === 1) {
+            try {
+                const cfgRes = await api(`/api/channels/${encodeURIComponent(selected[0].channel_name)}/config`);
+                channelConfig = cfgRes.config || {};
+            } catch (e) { /* 频道配置加载失败，使用默认值 */ }
+        }
+
+        renderOverridesEditor(channelConfig, _configSchema);
+        _overridesEditorLoaded = true;
+    } catch (e) {
+        editor.innerHTML = `<p class="text-danger small">加载配置 Schema 失败: ${escapeHtml(e.message)}</p>`;
+    }
+}
+
+function renderOverridesEditor(config, schema) {
+    const categories = schema.categories || {};
+    const globalKeys = new Set(schema.global_keys || []);
+    let html = '';
+    let hasContent = false;
+    for (const [cat, items] of Object.entries(categories)) {
+        // 筛选出频道专属配置（非全局 Key），排除 YOUTUBE_UPLOAD_PROXIES
+        const channelItems = (items || []).filter(item => !globalKeys.has(item.key) && item.key !== 'YOUTUBE_UPLOAD_PROXIES' && item.key !== 'YOUTUBE_CHANNEL_NAME');
+        if (channelItems.length === 0) continue;
+        hasContent = true;
+        html += `<h6 class="text-primary mt-3 border-bottom pb-1">${cat}</h6><div class="row">`;
+        for (const item of channelItems) {
+            const val = (config && config[item.key] !== undefined) ? config[item.key] : item.default;
+            const label = item.label || item.key;
+            const desc = item.description ? `<small class="text-muted">${item.description}</small>` : '';
+            let input;
+            if (item.type === 'bool') {
+                input = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-override-key="${item.key}" ${val ? 'checked' : ''}></div>`;
+            } else if (item.type === 'enum') {
+                const opts = (item.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
+                input = `<select class="form-select form-select-sm" data-override-key="${item.key}">${opts}</select>`;
+            } else if (item.type === 'int' || item.type === 'float') {
+                input = `<input type="number" class="form-control form-control-sm" data-override-key="${item.key}" value="${val ?? ''}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.step ? `step="${item.step}"` : (item.type === 'float' ? 'step="0.1"' : '')}>`;
+            } else {
+                const type = item.secret ? 'password' : 'text';
+                if (item.key === 'TARGET_CATEGORY') {
+                    input = `<div class="input-group"><input type="${type}" class="form-control form-control-sm" data-override-key="${item.key}" value="${val || ''}"><button class="btn btn-sm btn-outline-info" type="button" onclick="toggleOverridesCategoryList(this)">选择</button></div><div class="category-list mt-1" style="display:none;"></div>`;
+                } else {
+                    input = `<input type="${type}" class="form-control form-control-sm" data-override-key="${item.key}" value="${val || ''}">`;
+                }
+            }
+            html += `<div class="col-md-6 mb-2"><label class="form-label small">${label}</label>${input}${desc}</div>`;
+        }
+        html += '</div>';
+    }
+    if (!hasContent) {
+        html = '<p class="text-muted small">无频道专属配置可覆盖。</p>';
+    }
+    document.getElementById('overrides-editor').innerHTML = html;
+}
+
+function collectConfigOverrides() {
+    const inputs = document.querySelectorAll('[data-override-key]');
+    if (inputs.length === 0) return null;
+    const overrides = {};
+    let hasOverride = false;
+    for (const input of inputs) {
+        const key = input.dataset.overrideKey;
+        let val;
+        if (input.type === 'checkbox') val = input.checked;
+        else if (input.type === 'number') {
+            if (input.value === '') continue; // 空值跳过
+            val = parseFloat(input.value);
+        }
+        else val = input.value;
+        // 只要用户修改了值就加入覆盖（非空值）
+        if (val !== '' && val !== null && val !== undefined) {
+            overrides[key] = val;
+            hasOverride = true;
+        }
+    }
+    return hasOverride ? overrides : null;
+}
+
+async function toggleOverridesCategoryList(btn) {
+    const wrapper = btn.closest('.col-md-6');
+    const listEl = wrapper.querySelector('.category-list');
+    const inputEl = wrapper.querySelector('[data-override-key="TARGET_CATEGORY"]');
+    if (listEl.style.display !== 'none') {
+        listEl.style.display = 'none';
+        return;
+    }
+    if (!_categoriesLoaded) {
+        try {
+            const res = await api('/api/books/categories');
+            _categoriesCache = (res.categories || []).map(c => c.category);
+            _categoriesLoaded = true;
+        } catch (e) { showToast('加载分类失败: ' + e.message, 'danger'); return; }
+    }
+    const current = (inputEl.value || '').trim();
+    let html = '<div class="d-flex flex-wrap gap-1">';
+    html += `<button class="btn btn-sm btn-outline-secondary" onclick="pickOverridesCategory(this,'')">全部（留空）</button>`;
+    for (const cat of _categoriesCache) {
+        const active = cat === current ? ' active' : '';
+        html += `<button class="btn btn-sm btn-outline-primary${active}" onclick="pickOverridesCategory(this,'${cat.replace(/'/g, "\\'")}')">${cat}</button>`;
+    }
+    html += '</div>';
+    listEl.innerHTML = html;
+    listEl.style.display = 'block';
+}
+
+function pickOverridesCategory(btn, category) {
+    const wrapper = btn.closest('.col-md-6');
+    const inputEl = wrapper.querySelector('[data-override-key="TARGET_CATEGORY"]');
+    inputEl.value = category;
+    wrapper.querySelectorAll('.category-list .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wrapper.querySelector('.category-list').style.display = 'none';
+}
+
+// ── 创建定时任务 ──
 
 async function createScheduledTask() {
     const selected = getSelectedChannels();
@@ -232,22 +379,10 @@ async function createScheduledTask() {
     const name = document.getElementById('sched-name').value.trim();
     const cron = document.getElementById('sched-cron').value.trim();
     const category = document.getElementById('sched-category').value.trim();
-    const overridesRaw = document.getElementById('sched-overrides').value.trim();
     if (channelNames.length === 0) { showToast('请至少选择一个频道', 'warning'); return; }
     if (!cron) { showToast('请输入 Cron 表达式', 'warning'); return; }
 
-    let configOverrides = null;
-    if (overridesRaw) {
-        try {
-            configOverrides = JSON.parse(overridesRaw);
-            if (typeof configOverrides !== 'object' || configOverrides === null || Array.isArray(configOverrides)) {
-                throw new Error('JSON 必须是对象');
-            }
-        } catch (e) {
-            showToast('运行配置覆盖 JSON 格式错误: ' + e.message, 'danger');
-            return;
-        }
-    }
+    const configOverrides = collectConfigOverrides();
 
     try {
         if (channelNames.length === 1) {
@@ -264,11 +399,13 @@ async function createScheduledTask() {
             showToast(`批量创建完成: 成功 ${res.succeeded} 个${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`);
         }
         document.getElementById('sched-name').value = '';
-        document.getElementById('sched-overrides').value = '';
         // 重置频道选择
         document.querySelectorAll('.sched-channel-checkbox').forEach(cb => cb.checked = false);
         document.getElementById('ch-select-all').checked = false;
         updateChannelLabel();
+        // 重置配置覆盖编辑器
+        _overridesEditorLoaded = false;
+        document.getElementById('overrides-editor').innerHTML = '';
         loadScheduledTasks();
     } catch (e) { showToast('创建失败: ' + e.message, 'danger'); }
 }
@@ -299,7 +436,7 @@ async function loadScheduledTasks() {
                 <td>${t.channel_display_name || t.channel_name}</td>
                 <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
                 <td>${statusBadge}</td>
-                <td>${t.config_overrides ? `<span class="badge bg-info" title="${escapeHtml(JSON.stringify(t.config_overrides))}"><i class="bi bi-sliders"></i> 自定义</span>` : '<span class="text-muted small">默认</span>'}</td>
+                <td>${t.config_overrides ? (() => { const keys = Object.keys(t.config_overrides); return `<span class="badge bg-info" title="${escapeHtml(JSON.stringify(t.config_overrides))}"><i class="bi bi-sliders"></i> ${keys.length}项覆盖</span><br><small class="text-muted">${escapeHtml(keys.slice(0,3).join(', '))}${keys.length > 3 ? '...' : ''}</small>`; })() : '<span class="text-muted small">默认</span>'}</td>
                 <td><small>${fmtTime(t.next_run_at)}</small>${t.next_run_at ? `<br><span class="badge bg-light text-dark border small" data-countdown="${t.next_run_at}">${calcCountdown(t.next_run_at)}</span>` : ''}</td>
                 <td><small>${fmtTime(t.last_run_at)}</small></td>
                 <td>${lastStatusBadge}${t.last_run_message ? ` <small class="text-muted">${escapeHtml(t.last_run_message)}</small>` : ''}</td>
