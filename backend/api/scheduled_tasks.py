@@ -30,6 +30,7 @@ class CreateScheduledTaskRequest(BaseModel):
     cron_expr: str
     name: str = ""
     category: str = ""
+    config_overrides: dict | None = None
     is_enabled: bool = True
 
 
@@ -38,6 +39,7 @@ class BatchCreateScheduledTaskRequest(BaseModel):
     cron_expr: str
     name: str = ""
     category: str = ""
+    config_overrides: dict | None = None
     is_enabled: bool = True
 
 
@@ -50,6 +52,7 @@ class UpdateScheduledTaskRequest(BaseModel):
     cron_expr: str | None = None
     name: str | None = None
     category: str | None = None
+    config_overrides: dict | None = None
 
 
 @router.get("")
@@ -68,6 +71,7 @@ def create_scheduled_task(body: CreateScheduledTaskRequest):
             cron_expr=body.cron_expr,
             name=body.name,
             category=body.category,
+            config_overrides=body.config_overrides,
             is_enabled=body.is_enabled,
         )
         return {"ok": True, "task": task}
@@ -85,6 +89,7 @@ def batch_create_scheduled_tasks(body: BatchCreateScheduledTaskRequest):
         cron_expr=body.cron_expr,
         name=body.name,
         category=body.category,
+        config_overrides=body.config_overrides,
         is_enabled=body.is_enabled,
     )
     succeeded = sum(1 for r in results if r["ok"])
@@ -101,6 +106,7 @@ def update_scheduled_task(schedule_id: int, body: UpdateScheduledTaskRequest):
             cron_expr=body.cron_expr,
             name=body.name,
             category=body.category,
+            config_overrides=body.config_overrides,
         )
         return {"ok": True, "task": task}
     except ValueError as e:

@@ -75,6 +75,19 @@
                     <button class="btn btn-primary btn-sm" onclick="createScheduledTask()"><i class="bi bi-check-lg"></i> 创建</button>
                 </div>
             </div>
+            <!-- 运行配置覆盖（可折叠） -->
+            <div class="mt-2">
+                <a class="small text-muted text-decoration-none" data-bs-toggle="collapse" href="#overrides-collapse" role="button">
+                    <i class="bi bi-sliders"></i> 运行配置覆盖（可选，留空则使用频道默认配置）
+                </a>
+                <div class="collapse mt-2" id="overrides-collapse">
+                    <textarea class="form-control form-control-sm font-monospace" id="sched-overrides" rows="4" placeholder='JSON 格式，如：&#10;{&#10;  "YOUTUBE_SCHEDULE_AFTER_HOURS": 48,&#10;  "YOUTUBE_DAILY_PUBLISH_LIMIT": 5&#10;}&#10;留空则使用频道默认运行配置。'></textarea>
+                    <div class="form-text small">
+                        覆盖的配置会随任务投递写入 hf_jobs.params，HF Worker 认领任务时会合并到运行配置中。
+                        仅影响此定时任务投递的任务，不修改频道本身的配置。
+                    </div>
+                </div>
+            </div>
             <div class="form-text small mt-2">
                 Cron 格式：<code>分 时 日 月 周</code>（如 <code>0 3 * * *</code> = 每天 3:00，时区为服务器本地时区）。
                 可多选频道，为每个频道创建相同的定时任务。定时任务到期时自动投递 HF 外包任务，VPS 中继调度器会自动派发给 Worker。
@@ -106,7 +119,7 @@
                 <table class="table table-hover align-middle">
                     <thead><tr>
                         <th style="width:40px;"><input type="checkbox" id="sched-select-all" onchange="toggleSelectAllSched(this)" title="全选/取消全选"></th>
-                        <th>ID</th><th>名称</th><th>频道</th><th>Cron</th><th>状态</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
+                        <th>ID</th><th>名称</th><th>频道</th><th>Cron</th><th>状态</th><th>配置</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
                     </tr></thead>
                     <tbody id="scheduled-tasks-tbody"></tbody>
                 </table>
@@ -219,24 +232,39 @@ async function createScheduledTask() {
     const name = document.getElementById('sched-name').value.trim();
     const cron = document.getElementById('sched-cron').value.trim();
     const category = document.getElementById('sched-category').value.trim();
+    const overridesRaw = document.getElementById('sched-overrides').value.trim();
     if (channelNames.length === 0) { showToast('请至少选择一个频道', 'warning'); return; }
     if (!cron) { showToast('请输入 Cron 表达式', 'warning'); return; }
+
+    let configOverrides = null;
+    if (overridesRaw) {
+        try {
+            configOverrides = JSON.parse(overridesRaw);
+            if (typeof configOverrides !== 'object' || configOverrides === null || Array.isArray(configOverrides)) {
+                throw new Error('JSON 必须是对象');
+            }
+        } catch (e) {
+            showToast('运行配置覆盖 JSON 格式错误: ' + e.message, 'danger');
+            return;
+        }
+    }
 
     try {
         if (channelNames.length === 1) {
             const res = await api('/api/scheduled-tasks', {
                 method: 'POST',
-                body: JSON.stringify({ channel_name: channelNames[0], cron_expr: cron, name, category, is_enabled: true }),
+                body: JSON.stringify({ channel_name: channelNames[0], cron_expr: cron, name, category, config_overrides: configOverrides, is_enabled: true }),
             });
             showToast('定时任务创建成功');
         } else {
             const res = await api('/api/scheduled-tasks/batch-create', {
                 method: 'POST',
-                body: JSON.stringify({ channel_names: channelNames, cron_expr: cron, name, category, is_enabled: true }),
+                body: JSON.stringify({ channel_names: channelNames, cron_expr: cron, name, category, config_overrides: configOverrides, is_enabled: true }),
             });
             showToast(`批量创建完成: 成功 ${res.succeeded} 个${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`);
         }
         document.getElementById('sched-name').value = '';
+        document.getElementById('sched-overrides').value = '';
         // 重置频道选择
         document.querySelectorAll('.sched-channel-checkbox').forEach(cb => cb.checked = false);
         document.getElementById('ch-select-all').checked = false;
@@ -271,6 +299,7 @@ async function loadScheduledTasks() {
                 <td>${t.channel_display_name || t.channel_name}</td>
                 <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
                 <td>${statusBadge}</td>
+                <td>${t.config_overrides ? `<span class="badge bg-info" title="${escapeHtml(JSON.stringify(t.config_overrides))}"><i class="bi bi-sliders"></i> 自定义</span>` : '<span class="text-muted small">默认</span>'}</td>
                 <td><small>${fmtTime(t.next_run_at)}</small>${t.next_run_at ? `<br><span class="badge bg-light text-dark border small" data-countdown="${t.next_run_at}">${calcCountdown(t.next_run_at)}</span>` : ''}</td>
                 <td><small>${fmtTime(t.last_run_at)}</small></td>
                 <td>${lastStatusBadge}${t.last_run_message ? ` <small class="text-muted">${escapeHtml(t.last_run_message)}</small>` : ''}</td>
@@ -286,7 +315,7 @@ async function loadScheduledTasks() {
                     </button>
                 </td>
             </tr>`;
-        }).join('') || '<tr><td colspan="10" class="text-center text-muted">暂无定时任务</td></tr>';
+        }).join('') || '<tr><td colspan="11" class="text-center text-muted">暂无定时任务</td></tr>';
         document.getElementById('sched-select-all').checked = false;
     } catch (e) { showToast('加载定时任务失败: ' + e.message, 'danger'); }
 }

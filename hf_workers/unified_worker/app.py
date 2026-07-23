@@ -108,7 +108,7 @@ def _claim_next_pipeline_job() -> dict | None:
                        LIMIT 1
                        FOR UPDATE SKIP LOCKED
                    )
-                   RETURNING job_id, book_id, channel_name""",
+                   RETURNING job_id, book_id, channel_name, params""",
                 (WORKER_ID,),
             )
             row = cur.fetchone()
@@ -441,6 +441,18 @@ def _pipeline_process_one_job(job: dict) -> tuple[str, dict, str]:
     config["QUIET_RUNTIME_OUTPUT"] = False
     config.setdefault("ONLY_TG_CACHED_BOOKS", True)
     config.setdefault("ENABLE_TG_AUDIO_CACHE", True)
+
+    # 合并定时任务的自定义配置覆盖（来自 hf_jobs.params）
+    job_params = job.get("params")
+    if job_params:
+        if isinstance(job_params, str):
+            try:
+                job_params = json.loads(job_params)
+            except (json.JSONDecodeError, TypeError):
+                job_params = None
+        if isinstance(job_params, dict):
+            logger.info("[Job %s] 应用定时任务配置覆盖: %s", job_id, list(job_params.keys()))
+            config.update(job_params)
 
     # 3. 应用配置并导入 pipeline
     _pipeline_current_progress = f"初始化 pipeline: {book_name}"

@@ -39,6 +39,7 @@ _RELAY_TIMEOUT = 30
 class SeedJobsRequest(BaseModel):
     channel_name: str
     category: str = ""  # 可选分类筛选
+    config_overrides: dict | None = None  # 定时任务自定义运行配置覆盖
 
 
 # ═══════════════════════════════════════════════════════════
@@ -57,9 +58,12 @@ def seed_jobs(body: SeedJobsRequest):
         return {"ok": False, "error": "未配置 VPS_RELAY_URL（请在全局设置中配置）"}
 
     try:
+        seed_payload = {"channel_name": body.channel_name, "category": body.category}
+        if body.config_overrides:
+            seed_payload["config_overrides"] = body.config_overrides
         resp = requests.post(
             f"{relay_url}/api/seed-jobs",
-            json={"channel_name": body.channel_name, "category": body.category},
+            json=seed_payload,
             timeout=_RELAY_TIMEOUT,
         )
         return resp.json()
@@ -175,16 +179,24 @@ def seed_jobs_direct(body: SeedJobsRequest):
     inserted = 0
     for book in books:
         try:
-            db_execute(
-                sql.SQL("""INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status)
-                   VALUES ('tg_cache_pipeline', %s, %s, 'pending')"""),
-                (book["book_id"], channel),
-            )
+            if body.config_overrides:
+                from psycopg.types.json import Jsonb
+                db_execute(
+                    sql.SQL("""INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status, params)
+                       VALUES ('tg_cache_pipeline', %s, %s, 'pending', %s)"""),
+                    (book["book_id"], channel, Jsonb(body.config_overrides)),
+                )
+            else:
+                db_execute(
+                    sql.SQL("""INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status)
+                       VALUES ('tg_cache_pipeline', %s, %s, 'pending')"""),
+                    (book["book_id"], channel),
+                )
             inserted += 1
         except Exception as e:
             logger.warning("插入 hf_jobs 失败 book=%s: %s", book.get("book_id"), e)
 
-    logger.info("[HF外包] 频道=%s category=%s 筛选 %d 本 TG缓存完整书，写入 %d 个任务", channel, category or "(全部)", len(books), inserted)
+    logger.info("[HF外包] 频道=%s category=%s 筛选 %d 本 TG缓存完整书，写入 %d 个任务 (overrides=%s)", channel, category or "(全部)", len(books), inserted, bool(body.config_overrides))
     return {"ok": True, "inserted": inserted, "total_candidates": len(books)}
 
 

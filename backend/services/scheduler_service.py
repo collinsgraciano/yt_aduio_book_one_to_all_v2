@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from psycopg import sql
+from psycopg.types.json import Jsonb
 
 from ..database import fetch_one, fetch_all, execute
 
@@ -64,6 +65,7 @@ def create_scheduled_task(
     cron_expr: str,
     name: str = "",
     category: str = "",
+    config_overrides: dict | None = None,
     is_enabled: bool = True,
 ) -> dict:
     """创建定时任务。"""
@@ -87,13 +89,13 @@ def create_scheduled_task(
     row = fetch_one(
         sql.SQL("""
             INSERT INTO public.scheduled_tasks
-                (name, channel_name, cron_expr, category, is_enabled, next_run_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (name, channel_name, cron_expr, category, config_overrides, is_enabled, next_run_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """),
-        (name, channel_name, cron_expr, category, is_enabled, next_run),
+        (name, channel_name, cron_expr, category, Jsonb(config_overrides) if config_overrides else None, is_enabled, next_run),
     )
-    logger.info("创建定时任务: channel=%s cron=%s enabled=%s", channel_name, cron_expr, is_enabled)
+    logger.info("创建定时任务: channel=%s cron=%s enabled=%s overrides=%s", channel_name, cron_expr, is_enabled, bool(config_overrides))
     return row
 
 
@@ -102,13 +104,14 @@ def create_scheduled_tasks_batch(
     cron_expr: str,
     name: str = "",
     category: str = "",
+    config_overrides: dict | None = None,
     is_enabled: bool = True,
 ) -> list[dict]:
     """批量为多个频道创建相同的定时任务。"""
     results = []
     for ch in channel_names:
         try:
-            task = create_scheduled_task(ch, cron_expr, name, category, is_enabled)
+            task = create_scheduled_task(ch, cron_expr, name, category, config_overrides, is_enabled)
             results.append({"channel_name": ch, "ok": True, "task": task})
         except ValueError as e:
             results.append({"channel_name": ch, "ok": False, "error": str(e)})
@@ -124,6 +127,7 @@ def update_scheduled_task(
     cron_expr: str | None = None,
     name: str | None = None,
     category: str | None = None,
+    config_overrides: dict | None = None,
 ) -> dict:
     """更新定时任务。"""
     existing = fetch_one(
@@ -157,6 +161,9 @@ def update_scheduled_task(
 
     if category is not None:
         updates["category"] = category
+
+    if config_overrides is not None:
+        updates["config_overrides"] = Jsonb(config_overrides) if config_overrides else None
 
     if not updates:
         return existing
@@ -267,8 +274,15 @@ def _execute_scheduled_task(task: dict) -> dict:
     schedule_id = task["schedule_id"]
     channel_name = task["channel_name"]
     category = task.get("category") or ""
+    config_overrides = task.get("config_overrides") or None
+    if config_overrides and not isinstance(config_overrides, dict):
+        import json
+        try:
+            config_overrides = json.loads(config_overrides) if isinstance(config_overrides, str) else None
+        except (json.JSONDecodeError, TypeError):
+            config_overrides = None
 
-    logger.info("[定时任务 %s] 执行: channel=%s category=%s", schedule_id, channel_name, category or "(全部)")
+    logger.info("[定时任务 %s] 执行: channel=%s category=%s overrides=%s", schedule_id, channel_name, category or "(全部)", bool(config_overrides))
 
     try:
         # 尝试 VPS 中继路径
@@ -280,9 +294,12 @@ def _execute_scheduled_task(task: dict) -> dict:
 
         if relay_url:
             try:
+                seed_payload = {"channel_name": channel_name, "category": category}
+                if config_overrides:
+                    seed_payload["config_overrides"] = config_overrides
                 resp = requests.post(
                     f"{relay_url}/api/seed-jobs",
-                    json={"channel_name": channel_name, "category": category},
+                    json=seed_payload,
                     timeout=30,
                 )
                 result = resp.json()
@@ -296,7 +313,7 @@ def _execute_scheduled_task(task: dict) -> dict:
         # 回退：直写数据库
         if result is None:
             from ..api.tasks_hf import seed_jobs_direct, SeedJobsRequest
-            result = seed_jobs_direct(SeedJobsRequest(channel_name=channel_name, category=category))
+            result = seed_jobs_direct(SeedJobsRequest(channel_name=channel_name, category=category, config_overrides=config_overrides))
 
         # 记录执行结果
         status = "success" if result.get("ok", result.get("inserted", 0) >= 0) else "failed"

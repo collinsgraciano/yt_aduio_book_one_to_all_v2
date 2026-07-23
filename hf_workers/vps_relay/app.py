@@ -1606,6 +1606,7 @@ def api_seed_jobs():
     data = request.get_json(silent=True) or {}
     channel = data.get("channel_name", "")
     req_category = data.get("category", "")
+    config_overrides = data.get("config_overrides")
 
     if not channel:
         return jsonify({"ok": False, "error": "缺少 channel_name"}), 400
@@ -1714,18 +1715,25 @@ def api_seed_jobs():
     inserted = 0
     for book in books:
         try:
-            _execute(
-                """INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status)
-                   VALUES ('tg_cache_pipeline', %s, %s, 'pending')""",
-                (book["book_id"], channel),
-            )
+            if config_overrides:
+                _execute(
+                    """INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status, params)
+                       VALUES ('tg_cache_pipeline', %s, %s, 'pending', %s)""",
+                    (book["book_id"], channel, Jsonb(config_overrides)),
+                )
+            else:
+                _execute(
+                    """INSERT INTO public.hf_jobs (job_type, book_id, channel_name, status)
+                       VALUES ('tg_cache_pipeline', %s, %s, 'pending')""",
+                    (book["book_id"], channel),
+                )
             inserted += 1
         except Exception as e:
             logger.warning("插入 hf_jobs 失败 book=%s: %s", book.get("book_id"), e)
 
     logger.info(
-        "[投递] 频道=%s category=%s 筛选 %d 本 TG缓存完整书，写入 %d 个任务 (force_reprocess=%s)",
-        channel, category or "(全部)", len(books), inserted, force_reprocess,
+        "[投递] 频道=%s category=%s 筛选 %d 本 TG缓存完整书，写入 %d 个任务 (force_reprocess=%s, overrides=%s)",
+        channel, category or "(全部)", len(books), inserted, force_reprocess, bool(config_overrides),
     )
     return jsonify({"ok": True, "inserted": inserted, "total_candidates": len(books)})
 
