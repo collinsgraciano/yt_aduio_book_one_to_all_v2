@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from psycopg import sql
 
@@ -17,6 +18,7 @@ from ..database import fetch_one, fetch_all, execute
 logger = logging.getLogger(__name__)
 
 _CHECK_INTERVAL = 30  # 扫描间隔（秒）
+_MAX_CONCURRENT = 5   # 到期任务最大并发执行数
 
 _scheduler_thread: threading.Thread | None = None
 _stop_event = threading.Event()
@@ -95,6 +97,27 @@ def create_scheduled_task(
     return row
 
 
+def create_scheduled_tasks_batch(
+    channel_names: list[str],
+    cron_expr: str,
+    name: str = "",
+    category: str = "",
+    is_enabled: bool = True,
+) -> list[dict]:
+    """批量为多个频道创建相同的定时任务。"""
+    results = []
+    for ch in channel_names:
+        try:
+            task = create_scheduled_task(ch, cron_expr, name, category, is_enabled)
+            results.append({"channel_name": ch, "ok": True, "task": task})
+        except ValueError as e:
+            results.append({"channel_name": ch, "ok": False, "error": str(e)})
+    logger.info("批量创建定时任务: %d 成功, %d 失败",
+                sum(1 for r in results if r["ok"]),
+                sum(1 for r in results if not r["ok"]))
+    return results
+
+
 def update_scheduled_task(
     schedule_id: int,
     channel_name: str | None = None,
@@ -170,6 +193,26 @@ def delete_scheduled_task(schedule_id: int) -> dict:
         (schedule_id,),
     )
     return {"schedule_id": schedule_id, "deleted": count > 0}
+
+
+def delete_scheduled_tasks(schedule_ids: list[int]) -> dict:
+    """批量删除定时任务。"""
+    if not schedule_ids:
+        return {"deleted": 0, "total": 0}
+    deleted = 0
+    for sid in schedule_ids:
+        result = delete_scheduled_task(sid)
+        if result["deleted"]:
+            deleted += 1
+    logger.info("批量删除定时任务: %d/%d", deleted, len(schedule_ids))
+    return {"deleted": deleted, "total": len(schedule_ids)}
+
+
+def delete_all_scheduled_tasks() -> dict:
+    """删除所有定时任务。"""
+    count = execute(sql.SQL("DELETE FROM public.scheduled_tasks"))
+    logger.info("删除所有定时任务: %d 条", count)
+    return {"deleted": count}
 
 
 def toggle_scheduled_task(schedule_id: int) -> dict:
@@ -316,7 +359,7 @@ def _scheduler_loop():
 
 
 def _check_and_run_due_tasks():
-    """查询到期任务并执行。"""
+    """查询到期任务并并发执行。"""
     now = datetime.now(timezone.utc)
     due_tasks = fetch_all(
         sql.SQL("""
@@ -330,12 +373,16 @@ def _check_and_run_due_tasks():
     if not due_tasks:
         return
 
-    logger.info("发现 %d 个到期定时任务", len(due_tasks))
-    for task in due_tasks:
-        try:
-            _execute_scheduled_task(task)
-        except Exception as e:
-            logger.error("定时任务 %s 执行异常: %s", task.get("schedule_id"), e)
+    logger.info("发现 %d 个到期定时任务，并发执行（最大 %d）", len(due_tasks), _MAX_CONCURRENT)
+
+    with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT, thread_name_prefix="sched-exec") as executor:
+        futures = {executor.submit(_execute_scheduled_task, task): task for task in due_tasks}
+        for future in as_completed(futures):
+            task = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                logger.error("定时任务 %s 执行异常: %s", task.get("schedule_id"), e)
 
 
 def start_scheduler():

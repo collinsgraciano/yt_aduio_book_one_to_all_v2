@@ -10,20 +10,108 @@
 <!-- Nav tabs -->
 <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item">
-        <a class="nav-link active" data-bs-toggle="tab" href="#tab-tasks" role="tab">
-            <i class="bi bi-list-task"></i> 任务列表
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-scheduled" role="tab" onclick="loadScheduledTasks()">
+            <i class="bi bi-clock-history"></i> 定时任务
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab-scheduled" role="tab" onclick="loadScheduledTasks()">
-            <i class="bi bi-clock-history"></i> 定时任务
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-tasks" role="tab" onclick="loadTasks()">
+            <i class="bi bi-list-task"></i> 任务列表
         </a>
     </li>
 </ul>
 
 <div class="tab-content">
-    <!-- ═══ Tab 1: 任务列表 ═══ -->
-    <div class="tab-pane fade show active" id="tab-tasks" role="tabpanel">
+    <!-- ═══ Tab 1: 定时任务（默认展示） ═══ -->
+    <div class="tab-pane fade show active" id="tab-scheduled" role="tabpanel">
+        <!-- 创建定时任务 -->
+        <div class="card p-3 mb-3">
+            <h5 class="mb-3"><i class="bi bi-plus-circle"></i> 新建定时任务</h5>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">频道（可多选）</label>
+                    <div class="dropdown">
+                        <button class="form-select form-select-sm text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" id="sched-channel-btn">
+                            <span id="sched-channel-label" class="text-muted">选择频道</span>
+                            <i class="bi bi-chevron-down small"></i>
+                        </button>
+                        <div class="dropdown-menu p-2" style="min-width:300px; max-height:280px; overflow-y:auto;" id="sched-channel-menu">
+                            <div class="form-check mb-1">
+                                <input type="checkbox" class="form-check-input" id="ch-select-all" onchange="toggleAllChannels(this)">
+                                <label class="form-check-label small fw-bold" for="ch-select-all">全选/取消全选</label>
+                            </div>
+                            <hr class="my-1">
+                            <div id="sched-channel-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">名称（可选）</label>
+                    <input type="text" class="form-control form-control-sm" id="sched-name" placeholder="如：每日定时投递">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Cron 表达式</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="sched-cron" value="0 3 * * *" placeholder="分 时 日 月 周">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">预设</button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" onclick="setCron('0 3 * * *')">每天 3:00</a></li>
+                            <li><a class="dropdown-item" onclick="setCron('0 6 * * *')">每天 6:00</a></li>
+                            <li><a class="dropdown-item" onclick="setCron('0 0 * * *')">每天 0:00</a></li>
+                            <li><a class="dropdown-item" onclick="setCron('0 */6 * * *')">每 6 小时</a></li>
+                            <li><a class="dropdown-item" onclick="setCron('0 */12 * * *')">每 12 小时</a></li>
+                            <li><a class="dropdown-item" onclick="setCron('0 3 * * 1-5')">工作日 3:00</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-muted" onclick="setCron('*/30 * * * *')">每 30 分钟（测试用）</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">分类（可选）</label>
+                    <input type="text" class="form-control form-control-sm" id="sched-category" list="category-list" placeholder="留空=全部">
+                    <datalist id="category-list"></datalist>
+                </div>
+                <div class="col-md-1 d-grid">
+                    <button class="btn btn-primary btn-sm" onclick="createScheduledTask()"><i class="bi bi-check-lg"></i> 创建</button>
+                </div>
+            </div>
+            <div class="form-text small mt-2">
+                Cron 格式：<code>分 时 日 月 周</code>（如 <code>0 3 * * *</code> = 每天 3:00，时区为服务器本地时区）。
+                可多选频道，为每个频道创建相同的定时任务。定时任务到期时自动投递 HF 外包任务，VPS 中继调度器会自动派发给 Worker。
+            </div>
+        </div>
+
+        <!-- 定时任务列表 -->
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 已配置的定时任务</h5>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick="loadScheduledTasks()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+                </div>
+            </div>
+            <!-- 批量操作栏 -->
+            <div class="d-flex justify-content-between align-items-center mb-2" id="sched-batch-bar" style="display:none;">
+                <div>
+                    <span class="text-muted small me-3">已选择 <strong id="sched-selected-count">0</strong> 个任务</span>
+                    <button class="btn btn-sm btn-danger me-1" onclick="batchDeleteScheduled()"><i class="bi bi-trash"></i> 删除选中</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearSchedSelection()">取消选择</button>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteAllScheduled()"><i class="bi bi-trash-fill"></i> 一键删除全部</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead><tr>
+                        <th style="width:40px;"><input type="checkbox" id="sched-select-all" onchange="toggleSelectAllSched(this)" title="全选/取消全选"></th>
+                        <th>ID</th><th>名称</th><th>频道</th><th>Cron</th><th>状态</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
+                    </tr></thead>
+                    <tbody id="scheduled-tasks-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab 2: 任务列表 ═══ -->
+    <div class="tab-pane fade" id="tab-tasks" role="tabpanel">
         <div class="d-flex justify-content-end gap-2 mb-3">
             <select class="form-select form-select-sm" id="filter-status" style="width:140px;" onchange="loadTasks()">
                 <option value="">全部状态</option>
@@ -67,70 +155,6 @@
             </div>
         </div>
     </div>
-
-    <!-- ═══ Tab 2: 定时任务 ═══ -->
-    <div class="tab-pane fade" id="tab-scheduled" role="tabpanel">
-        <!-- 创建定时任务 -->
-        <div class="card p-3 mb-3">
-            <h5 class="mb-3"><i class="bi bi-plus-circle"></i> 新建定时任务</h5>
-            <div class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label small text-muted">频道</label>
-                    <select class="form-select form-select-sm" id="sched-channel">
-                        <option value="">选择频道</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small text-muted">名称（可选）</label>
-                    <input type="text" class="form-control form-control-sm" id="sched-name" placeholder="如：每日定时投递">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small text-muted">Cron 表达式</label>
-                    <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" id="sched-cron" value="0 3 * * *" placeholder="分 时 日 月 周">
-                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">预设</button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" onclick="setCron('0 3 * * *')">每天 3:00</a></li>
-                            <li><a class="dropdown-item" onclick="setCron('0 6 * * *')">每天 6:00</a></li>
-                            <li><a class="dropdown-item" onclick="setCron('0 0 * * *')">每天 0:00</a></li>
-                            <li><a class="dropdown-item" onclick="setCron('0 */6 * * *')">每 6 小时</a></li>
-                            <li><a class="dropdown-item" onclick="setCron('0 */12 * * *')">每 12 小时</a></li>
-                            <li><a class="dropdown-item" onclick="setCron('0 3 * * 1-5')">工作日 3:00</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-muted" onclick="setCron('*/30 * * * *')">每 30 分钟（测试用）</a></li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted">分类（可选）</label>
-                    <input type="text" class="form-control form-control-sm" id="sched-category" placeholder="留空=全部">
-                </div>
-                <div class="col-md-1 d-grid">
-                    <button class="btn btn-primary btn-sm" onclick="createScheduledTask()"><i class="bi bi-check-lg"></i> 创建</button>
-                </div>
-            </div>
-            <div class="form-text small mt-2">
-                Cron 格式：<code>分 时 日 月 周</code>（如 <code>0 3 * * *</code> = 每天 3:00，时区为服务器本地时区）。
-                定时任务到期时自动投递 HF 外包任务，VPS 中继调度器会自动派发给 Worker。
-            </div>
-        </div>
-
-        <!-- 定时任务列表 -->
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 已配置的定时任务</h5>
-                <button class="btn btn-outline-primary btn-sm" onclick="loadScheduledTasks()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead><tr>
-                        <th>ID</th><th>名称</th><th>频道</th><th>Cron</th><th>状态</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
-                    </tr></thead>
-                    <tbody id="scheduled-tasks-tbody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -139,6 +163,207 @@
 let currentPage = 1;
 let totalPages = 1;
 let selectedTasks = new Set();
+let selectedSchedTasks = new Set();
+let allChannels = [];
+
+// ═══════════════════════════════════════════
+// 定时任务
+// ═══════════════════════════════════════════
+
+function setCron(expr) {
+    document.getElementById('sched-cron').value = expr;
+}
+
+// ── 频道多选 ──
+
+function toggleAllChannels(el) {
+    document.querySelectorAll('.sched-channel-checkbox').forEach(cb => {
+        cb.checked = el.checked;
+    });
+    updateChannelLabel();
+}
+
+function updateChannelLabel() {
+    const selected = getSelectedChannels();
+    const label = document.getElementById('sched-channel-label');
+    if (selected.length === 0) {
+        label.textContent = '选择频道';
+        label.className = 'text-muted';
+    } else if (selected.length === allChannels.length) {
+        label.textContent = `全部频道 (${selected.length})`;
+        label.className = '';
+    } else {
+        const names = selected.map(ch => ch.display_name || ch.channel_name);
+        const display = names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} 等${names.length}个`;
+        label.textContent = display;
+        label.className = '';
+    }
+}
+
+function getSelectedChannels() {
+    return allChannels.filter(ch => {
+        const cb = document.getElementById(`ch-${ch.channel_name}`);
+        return cb && cb.checked;
+    });
+}
+
+// ── 创建定时任务 ──
+
+async function createScheduledTask() {
+    const selected = getSelectedChannels();
+    const channelNames = selected.map(ch => ch.channel_name);
+    const name = document.getElementById('sched-name').value.trim();
+    const cron = document.getElementById('sched-cron').value.trim();
+    const category = document.getElementById('sched-category').value.trim();
+    if (channelNames.length === 0) { showToast('请至少选择一个频道', 'warning'); return; }
+    if (!cron) { showToast('请输入 Cron 表达式', 'warning'); return; }
+
+    try {
+        if (channelNames.length === 1) {
+            const res = await api('/api/scheduled-tasks', {
+                method: 'POST',
+                body: JSON.stringify({ channel_name: channelNames[0], cron_expr: cron, name, category, is_enabled: true }),
+            });
+            showToast('定时任务创建成功');
+        } else {
+            const res = await api('/api/scheduled-tasks/batch-create', {
+                method: 'POST',
+                body: JSON.stringify({ channel_names: channelNames, cron_expr: cron, name, category, is_enabled: true }),
+            });
+            showToast(`批量创建完成: 成功 ${res.succeeded} 个${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`);
+        }
+        document.getElementById('sched-name').value = '';
+        // 重置频道选择
+        document.querySelectorAll('.sched-channel-checkbox').forEach(cb => cb.checked = false);
+        document.getElementById('ch-select-all').checked = false;
+        updateChannelLabel();
+        loadScheduledTasks();
+    } catch (e) { showToast('创建失败: ' + e.message, 'danger'); }
+}
+
+// ── 定时任务列表 ──
+
+async function loadScheduledTasks() {
+    try {
+        const data = await api('/api/scheduled-tasks');
+        const tbody = document.getElementById('scheduled-tasks-tbody');
+        selectedSchedTasks.clear();
+        updateSchedBatchBar();
+        tbody.innerHTML = (data.tasks || []).map(t => {
+            const enabled = t.is_enabled;
+            const statusBadge = enabled
+                ? '<span class="badge bg-success">启用</span>'
+                : '<span class="badge bg-secondary">禁用</span>';
+            const lastStatusBadge = t.last_run_status === 'success'
+                ? '<span class="badge bg-success">成功</span>'
+                : t.last_run_status === 'failed'
+                ? '<span class="badge bg-danger">失败</span>'
+                : '<span class="text-muted">-</span>';
+            return `
+            <tr>
+                <td><input type="checkbox" class="sched-task-checkbox" value="${t.schedule_id}" onchange="onSchedCheckChange(this)"></td>
+                <td><code>#${t.schedule_id}</code></td>
+                <td>${escapeHtml(t.name || '-')}</td>
+                <td>${t.channel_display_name || t.channel_name}</td>
+                <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
+                <td>${statusBadge}</td>
+                <td><small>${fmtTime(t.next_run_at)}</small></td>
+                <td><small>${fmtTime(t.last_run_at)}</small></td>
+                <td>${lastStatusBadge}${t.last_run_message ? ` <small class="text-muted">${escapeHtml(t.last_run_message)}</small>` : ''}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-${enabled ? 'warning' : 'success'}" onclick="toggleScheduledTask(${t.schedule_id})" title="${enabled ? '禁用' : '启用'}">
+                        <i class="bi bi-${enabled ? 'pause-fill' : 'play-fill'}"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary ms-1" onclick="runScheduledTaskNow(${t.schedule_id})" title="立即执行">
+                        <i class="bi bi-lightning"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteScheduledTask(${t.schedule_id})" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="10" class="text-center text-muted">暂无定时任务</td></tr>';
+        document.getElementById('sched-select-all').checked = false;
+    } catch (e) { showToast('加载定时任务失败: ' + e.message, 'danger'); }
+}
+
+function onSchedCheckChange(cb) {
+    if (cb.checked) selectedSchedTasks.add(parseInt(cb.value));
+    else selectedSchedTasks.delete(parseInt(cb.value));
+    updateSchedBatchBar();
+}
+
+function toggleSelectAllSched(el) {
+    document.querySelectorAll('.sched-task-checkbox').forEach(cb => {
+        cb.checked = el.checked;
+        if (el.checked) selectedSchedTasks.add(parseInt(cb.value));
+        else selectedSchedTasks.delete(parseInt(cb.value));
+    });
+    updateSchedBatchBar();
+}
+
+function clearSchedSelection() {
+    selectedSchedTasks.clear();
+    document.querySelectorAll('.sched-task-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('sched-select-all').checked = false;
+    updateSchedBatchBar();
+}
+
+function updateSchedBatchBar() {
+    const bar = document.getElementById('sched-batch-bar');
+    const count = selectedSchedTasks.size;
+    document.getElementById('sched-selected-count').textContent = count;
+    bar.style.display = (count > 0) ? '' : 'none';
+}
+
+async function toggleScheduledTask(id) {
+    try {
+        await api(`/api/scheduled-tasks/${id}/toggle`, { method: 'POST' });
+        showToast('已切换状态');
+        loadScheduledTasks();
+    } catch (e) { showToast('操作失败: ' + e.message, 'danger'); }
+}
+
+async function runScheduledTaskNow(id) {
+    if (!confirm('确认立即执行该定时任务？')) return;
+    try {
+        const res = await api(`/api/scheduled-tasks/${id}/run-now`, { method: 'POST' });
+        showToast('执行完成: ' + (res.result?.result?.ok ? `投递 ${res.result.result.inserted || 0} 个任务` : (res.result?.result?.error || '完成')));
+        loadScheduledTasks();
+    } catch (e) { showToast('执行失败: ' + e.message, 'danger'); }
+}
+
+async function deleteScheduledTask(id) {
+    if (!confirm('确认删除该定时任务？此操作不可撤销。')) return;
+    try {
+        await api(`/api/scheduled-tasks/${id}`, { method: 'DELETE' });
+        showToast('定时任务已删除');
+        loadScheduledTasks();
+    } catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
+}
+
+async function batchDeleteScheduled() {
+    if (selectedSchedTasks.size === 0) return;
+    if (!confirm(`确认删除选中的 ${selectedSchedTasks.size} 个定时任务？此操作不可撤销。`)) return;
+    try {
+        const result = await api('/api/scheduled-tasks/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ schedule_ids: [...selectedSchedTasks] }),
+        });
+        showToast(`已删除 ${result.deleted} 个定时任务`);
+        selectedSchedTasks.clear();
+        loadScheduledTasks();
+    } catch (e) { showToast('批量删除失败: ' + e.message, 'danger'); }
+}
+
+async function deleteAllScheduled() {
+    if (!confirm('⚠️ 确认删除所有定时任务？此操作不可撤销。')) return;
+    try {
+        const result = await api('/api/scheduled-tasks/all', { method: 'DELETE' });
+        showToast(`已删除 ${result.deleted} 个定时任务`);
+        loadScheduledTasks();
+    } catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
+}
 
 // ═══════════════════════════════════════════
 // 任务列表
@@ -269,98 +494,6 @@ async function deleteAllTasks() {
 }
 
 // ═══════════════════════════════════════════
-// 定时任务
-// ═══════════════════════════════════════════
-
-function setCron(expr) {
-    document.getElementById('sched-cron').value = expr;
-}
-
-async function createScheduledTask() {
-    const channel = document.getElementById('sched-channel').value;
-    const name = document.getElementById('sched-name').value.trim();
-    const cron = document.getElementById('sched-cron').value.trim();
-    const category = document.getElementById('sched-category').value.trim();
-    if (!channel) { showToast('请选择频道', 'warning'); return; }
-    if (!cron) { showToast('请输入 Cron 表达式', 'warning'); return; }
-    try {
-        const res = await api('/api/scheduled-tasks', {
-            method: 'POST',
-            body: JSON.stringify({ channel_name: channel, cron_expr: cron, name, category, is_enabled: true }),
-        });
-        showToast('定时任务创建成功');
-        document.getElementById('sched-name').value = '';
-        loadScheduledTasks();
-    } catch (e) { showToast('创建失败: ' + e.message, 'danger'); }
-}
-
-async function loadScheduledTasks() {
-    try {
-        const data = await api('/api/scheduled-tasks');
-        const tbody = document.getElementById('scheduled-tasks-tbody');
-        tbody.innerHTML = (data.tasks || []).map(t => {
-            const enabled = t.is_enabled;
-            const statusBadge = enabled
-                ? '<span class="badge bg-success">启用</span>'
-                : '<span class="badge bg-secondary">禁用</span>';
-            const lastStatusBadge = t.last_run_status === 'success'
-                ? '<span class="badge bg-success">成功</span>'
-                : t.last_run_status === 'failed'
-                ? '<span class="badge bg-danger">失败</span>'
-                : '<span class="text-muted">-</span>';
-            return `
-            <tr>
-                <td><code>#${t.schedule_id}</code></td>
-                <td>${escapeHtml(t.name || '-')}</td>
-                <td>${t.channel_display_name || t.channel_name}</td>
-                <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
-                <td>${statusBadge}</td>
-                <td><small>${fmtTime(t.next_run_at)}</small></td>
-                <td><small>${fmtTime(t.last_run_at)}</small></td>
-                <td>${lastStatusBadge}${t.last_run_message ? ` <small class="text-muted">${escapeHtml(t.last_run_message)}</small>` : ''}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-${enabled ? 'warning' : 'success'}" onclick="toggleScheduledTask(${t.schedule_id})" title="${enabled ? '禁用' : '启用'}">
-                        <i class="bi bi-${enabled ? 'pause-fill' : 'play-fill'}"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary ms-1" onclick="runScheduledTaskNow(${t.schedule_id})" title="立即执行">
-                        <i class="bi bi-lightning"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteScheduledTask(${t.schedule_id})" title="删除">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </td>
-            </tr>`;
-        }).join('') || '<tr><td colspan="9" class="text-center text-muted">暂无定时任务</td></tr>';
-    } catch (e) { showToast('加载定时任务失败: ' + e.message, 'danger'); }
-}
-
-async function toggleScheduledTask(id) {
-    try {
-        await api(`/api/scheduled-tasks/${id}/toggle`, { method: 'POST' });
-        showToast('已切换状态');
-        loadScheduledTasks();
-    } catch (e) { showToast('操作失败: ' + e.message, 'danger'); }
-}
-
-async function runScheduledTaskNow(id) {
-    if (!confirm('确认立即执行该定时任务？')) return;
-    try {
-        const res = await api(`/api/scheduled-tasks/${id}/run-now`, { method: 'POST' });
-        showToast('执行完成: ' + (res.result?.result?.ok ? `投递 ${res.result.result.inserted || 0} 个任务` : (res.result?.result?.error || '完成')));
-        loadScheduledTasks();
-    } catch (e) { showToast('执行失败: ' + e.message, 'danger'); }
-}
-
-async function deleteScheduledTask(id) {
-    if (!confirm('确认删除该定时任务？此操作不可撤销。')) return;
-    try {
-        await api(`/api/scheduled-tasks/${id}`, { method: 'DELETE' });
-        showToast('定时任务已删除');
-        loadScheduledTasks();
-    } catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
-}
-
-// ═══════════════════════════════════════════
 // 通用
 // ═══════════════════════════════════════════
 
@@ -371,24 +504,43 @@ function escapeHtml(s) {
 async function loadChannels() {
     try {
         const data = await api('/api/channels');
-        const channels = data.channels || [];
+        allChannels = data.channels || [];
         // 任务列表筛选
         const sel = document.getElementById('filter-channel');
-        sel.innerHTML = '<option value="">全部频道</option>' + channels.map(ch =>
+        sel.innerHTML = '<option value="">全部频道</option>' + allChannels.map(ch =>
             `<option value="${ch.channel_name}">${ch.display_name || ch.channel_name}</option>`
         ).join('');
-        // 定时任务表单
-        const schedSel = document.getElementById('sched-channel');
-        if (schedSel) {
-            schedSel.innerHTML = '<option value="">选择频道</option>' + channels.map(ch =>
-                `<option value="${ch.channel_name}">${ch.display_name || ch.channel_name}</option>`
+        // 定时任务表单 — 多选复选框
+        const list = document.getElementById('sched-channel-list');
+        if (list) {
+            list.innerHTML = allChannels.map(ch =>
+                `<div class="form-check mb-1">
+                    <input type="checkbox" class="form-check-input sched-channel-checkbox" id="ch-${ch.channel_name}" value="${ch.channel_name}" onchange="updateChannelLabel()">
+                    <label class="form-check-label small" for="ch-${ch.channel_name}">${ch.display_name || ch.channel_name}</label>
+                </div>`
+            ).join('');
+        }
+    } catch (e) {}
+}
+
+async function loadCategories() {
+    try {
+        const data = await api('/api/books/categories');
+        const datalist = document.getElementById('category-list');
+        if (datalist) {
+            datalist.innerHTML = (data.categories || []).map(c =>
+                `<option value="${escapeHtml(c.category)}">${c.count} 本</option>`
             ).join('');
         }
     } catch (e) {}
 }
 
 loadChannels();
-loadTasks();
-setInterval(() => { const s = document.getElementById('filter-status').value; if (s === 'running' || s === 'stopping') loadTasks(); }, 5000);
+loadCategories();
+loadScheduledTasks();
+setInterval(() => {
+    // 定时任务列表每 30s 刷新一次
+    loadScheduledTasks();
+}, 30000);
 </script>
 {% endblock %}
