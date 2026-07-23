@@ -123,7 +123,11 @@ function renderConfig(config, schema) {
                 input = `<input type="number" class="form-control form-control-sm" data-key="${item.key}" value="${val}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.step ? `step="${item.step}"` : (item.type === 'float' ? 'step="0.1"' : '')}>`;
             } else {
                 const type = item.secret ? 'password' : 'text';
-                input = `<input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}">`;
+                if (item.key === 'TARGET_CATEGORY') {
+                    input = `<div class="input-group"><input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}"><button class="btn btn-sm btn-outline-info" type="button" onclick="toggleCategoryList(this)">选择</button></div><div class="category-list mt-1" style="display:none;"></div>`;
+                } else {
+                    input = `<input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}">`;
+                }
             }
             html += `<div class="col-md-6 mb-2"><label class="form-label small">${label}</label>${input}${desc}</div>`;
         }
@@ -148,6 +152,45 @@ async function saveConfig() {
         await api(`/api/channels/${encodeURIComponent(CHANNEL)}/config`, { method: 'PUT', body: JSON.stringify(config) });
         showToast('配置已保存');
     } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
+}
+
+let _categoriesLoaded = false;
+let _categoriesCache = [];
+
+async function toggleCategoryList(btn) {
+    const wrapper = btn.closest('.col-md-6');
+    const listEl = wrapper.querySelector('.category-list');
+    const inputEl = wrapper.querySelector('[data-key="TARGET_CATEGORY"]');
+    if (listEl.style.display !== 'none') {
+        listEl.style.display = 'none';
+        return;
+    }
+    if (!_categoriesLoaded) {
+        try {
+            const res = await api('/api/books/categories');
+            _categoriesCache = (res.categories || []).map(c => c.category);
+            _categoriesLoaded = true;
+        } catch (e) { showToast('加载分类失败: ' + e.message, 'danger'); return; }
+    }
+    const current = (inputEl.value || '').trim();
+    let html = '<div class="d-flex flex-wrap gap-1">';
+    html += `<button class="btn btn-sm btn-outline-secondary" onclick="pickCategory(this,'')">全部（留空）</button>`;
+    for (const cat of _categoriesCache) {
+        const active = cat === current ? ' active' : '';
+        html += `<button class="btn btn-sm btn-outline-primary${active}" onclick="pickCategory(this,'${cat.replace(/'/g, "\\'")}')">${cat}</button>`;
+    }
+    html += '</div>';
+    listEl.innerHTML = html;
+    listEl.style.display = 'block';
+}
+
+function pickCategory(btn, category) {
+    const wrapper = btn.closest('.col-md-6');
+    const inputEl = wrapper.querySelector('[data-key="TARGET_CATEGORY"]');
+    inputEl.value = category;
+    wrapper.querySelectorAll('.category-list .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wrapper.querySelector('.category-list').style.display = 'none';
 }
 
 async function startOAuth() {
