@@ -74,12 +74,9 @@ Copy-Item "$PROJECT\hf_workers\unified_worker\app.py"        "$SPACE\app.py"
 Copy-Item "$PROJECT\hf_workers\unified_worker\runner.py"      "$SPACE\runner.py"
 Copy-Item "$PROJECT\hf_workers\unified_worker\shared.py"       "$SPACE\shared.py"
 Copy-Item "$PROJECT\hf_workers\unified_worker\requirements.txt" "$SPACE\requirements.txt"
-
-# 复制 Dockerfile（注意：需要修改 COPY 路径，见第 5 步）
 Copy-Item "$PROJECT\hf_workers\unified_worker\Dockerfile"      "$SPACE\Dockerfile"
 
-# 复制 pipeline 整个目录
-Copy-Item "$PROJECT\pipeline" "$SPACE\pipeline" -Recurse
+# pipeline/ 无需复制 — 构建时从 GitHub 自动拉取
 ```
 
 ```bash
@@ -93,42 +90,21 @@ cp "$PROJECT/hf_workers/unified_worker/shared.py"    "$SPACE/shared.py"
 cp "$PROJECT/hf_workers/unified_worker/requirements.txt" "$SPACE/requirements.txt"
 cp "$PROJECT/hf_workers/unified_worker/Dockerfile"   "$SPACE/Dockerfile"
 
-cp -r "$PROJECT/pipeline/" "$SPACE/pipeline/"
+# pipeline/ 无需复制 — 构建时从 GitHub 自动拉取
 ```
 
-### 第 5 步：修改 Dockerfile 的 COPY 路径
-
-HF Space 的 Docker 构建上下文是 Space 仓库根目录（不是项目根目录），
-因此 Dockerfile 中的 `COPY` 路径需要从 `hf_workers/unified_worker/xxx` 改为 `xxx`：
-
-```dockerfile
-# ── 修改前（项目根目录上下文）──
-COPY hf_workers/unified_worker/requirements.txt /tmp/requirements.txt
-COPY pipeline/ /app/pipeline/
-COPY hf_workers/unified_worker/app.py /app/app.py
-COPY hf_workers/unified_worker/runner.py /app/runner.py
-COPY hf_workers/unified_worker/shared.py /app/shared.py
-
-# ── 修改后（HF Space 根目录上下文）──
-COPY requirements.txt /tmp/requirements.txt
-COPY pipeline/ /app/pipeline/
-COPY app.py /app/app.py
-COPY runner.py /app/runner.py
-COPY shared.py /app/shared.py
-```
-
-### 第 6 步：清理不需要的文件
+### 第 5 步：清理不需要的文件
 
 ```bash
-# 删除 pipeline 中的 __pycache__（体积大且无意义）
+# 删除可能残留的 __pycache__ 目录
 # Windows (PowerShell)
-Remove-Item "$SPACE\pipeline\__pycache__" -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path "$SPACE" -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # macOS / Linux
-rm -rf "$SPACE/pipeline/__pycache__"
+find "$SPACE" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 ```
 
-### 第 7 步：提交并推送
+### 第 6 步：提交并推送
 
 ```bash
 cd "你的audiobook-worker-1路径"
@@ -153,8 +129,9 @@ git push origin main
 
 ## 方法二：增量更新（适用于小改动）
 
-> 适用于只改了几个文件的情况（如只更新了 `runner.py` 和 `pipeline/bgm.py`）。
+> 适用于只改了几个文件的情况（如只更新了 `runner.py`）。
 > 不需要清空仓库，直接覆盖变更的文件。
+> pipeline 改动直接 push GitHub，无需同步到 HF Space。
 
 ### 第 1 步：克隆 HF Space 仓库（如果尚未克隆）
 
@@ -174,9 +151,6 @@ $SPACE = "你的audiobook-worker-1路径"
 
 # 例：只更新了 BGM 侧链压缩相关代码
 Copy-Item "$PROJECT\hf_workers\unified_worker\runner.py"  "$SPACE\runner.py" -Force
-Copy-Item "$PROJECT\pipeline\bgm.py"                      "$SPACE\pipeline\bgm.py" -Force
-Copy-Item "$PROJECT\pipeline\config.py"                   "$SPACE\pipeline\config.py" -Force
-Copy-Item "$PROJECT\pipeline\audio.py"                    "$SPACE\pipeline\audio.py" -Force
 ```
 
 ```bash
@@ -185,9 +159,6 @@ PROJECT="/path/to/yt_aduio_book_one_to_all_v2"
 SPACE="/path/to/audiobook-worker-1"
 
 cp "$PROJECT/hf_workers/unified_worker/runner.py" "$SPACE/runner.py"
-cp "$PROJECT/pipeline/bgm.py"                      "$SPACE/pipeline/bgm.py"
-cp "$PROJECT/pipeline/config.py"                  "$SPACE/pipeline/config.py"
-cp "$PROJECT/pipeline/audio.py"                   "$SPACE/pipeline/audio.py"
 ```
 
 ### 第 3 步：提交并推送
@@ -230,15 +201,14 @@ git push origin main
 
 | 改动范围 | 需要同步的文件 | 说明 |
 |----------|---------------|------|
-| BGM 混音逻辑 | `pipeline/bgm.py` | BGM 混音核心逻辑 |
-| BGM 配置参数 | `pipeline/config.py` | 新增/修改的配置项默认值 |
-| 章节音频构建 | `pipeline/audio.py` | 章节合并、混音调用 |
-| 测试执行器 | `runner.py` | HF Worker 测试端点参数 |
 | Worker 应用 | `app.py` | 端点、路由、槽位管理 |
+| 测试执行器 | `runner.py` | HF Worker 测试端点参数 |
 | 共享工具 | `shared.py` | Worker 与 VPS 中继共享逻辑 |
 | 依赖变更 | `requirements.txt` | 新增/移除 Python 包 |
 | Docker 变更 | `Dockerfile` | 系统依赖、构建步骤 |
 
+> **注意**：`pipeline/` 目录无需同步，构建时自动从 GitHub 拉取最新代码。
+> 如果 pipeline 有改动，先 push 到 GitHub，HF Space 下次构建时自动生效。
 > **建议**：不确定改了哪些文件时，用方法一清空重建最保险。
 
 ---
@@ -300,7 +270,7 @@ git push
 
 ### Q: 构建失败 `COPY failed: file not found`
 
-检查 Dockerfile 中的 `COPY` 路径是否已从 `hf_workers/unified_worker/xxx` 改为 `xxx`（见方法一第 5 步）。
+确保 HF Space 仓库根目录包含以下文件：`app.py`、`runner.py`、`shared.py`、`requirements.txt`、`Dockerfile`。`pipeline/` 无需上传，构建时自动从 GitHub 拉取。
 
 ### Q: 推送后没有触发重新构建
 
@@ -320,14 +290,7 @@ sleep 30 && curl https://你的用户名-audiobook-worker-1.hf.space/health
 
 ### Q: pipeline/ 目录中有 __pycache__ 导致体积过大
 
-上传前清理：
-```bash
-# Windows (PowerShell)
-Get-ChildItem -Path "$SPACE\pipeline" -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
-
-# macOS / Linux
-find "$SPACE/pipeline" -type d -name __pycache__ -exec rm -rf {} +
-```
+`pipeline/` 现在从 GitHub 自动拉取，HF Space 仓库中不包含 pipeline 目录，无需清理。
 
 ### Q: 多个 Worker 如何批量更新
 
@@ -355,13 +318,9 @@ for w in "${WORKERS[@]}"; do
     cp "$PROJECT/hf_workers/unified_worker/shared.py" .
     cp "$PROJECT/hf_workers/unified_worker/requirements.txt" .
     cp "$PROJECT/hf_workers/unified_worker/Dockerfile" .
-    cp -r "$PROJECT/pipeline/" ./pipeline/
 
-    # 修改 Dockerfile COPY 路径
-    sed -i 's|COPY hf_workers/unified_worker/|COPY |g' Dockerfile
-
-    # 清理缓存
-    find ./pipeline -type d -name __pycache__ -exec rm -rf {} +
+    # 清理缓存（如有残留）
+    find ./pipeline -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
     # 提交推送
     git add -A
@@ -385,12 +344,10 @@ done
 │  3. 从项目复制最新文件                                │
 │     - app.py / runner.py / shared.py               │
 │     - requirements.txt / Dockerfile                 │
-│     - pipeline/ 整个目录                            │
-│  4. 修改 Dockerfile COPY 路径                       │
-│     hf_workers/unified_worker/xxx → xxx             │
-│  5. 清理 __pycache__                                │
-│  6. git add -A && git commit && git push           │
-│  7. 等待 HF 构建完成（5-10 分钟）                    │
-│  8. curl /health 验证                               │
+│  4. 清理 __pycache__（如有）                         │
+│  5. git add -A && git commit && git push           │
+│  6. 等待 HF 构建完成（5-10 分钟）                    │
+│     pipeline/ 自动从 GitHub 拉取                     │
+│  7. curl /health 验证                               │
 └─────────────────────────────────────────────────────┘
 ```

@@ -10,8 +10,11 @@
 #   - 持久目录 /data（BGM 音乐缓存）
 #   - 临时输出 /tmp/output（HF 重启后清空，中间文件无需持久化）
 #
-# 构建上下文：项目根目录
-#   docker build -f hf_workers/unified_worker/Dockerfile -t hf-unified-worker .
+# 构建上下文：HF Space 仓库根目录（文件铺平，无子目录前缀）
+#   docker build -f Dockerfile -t hf-unified-worker .
+#
+# pipeline/ 从 GitHub 仓库自动拉取，无需本地 COPY：
+#   https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2
 # ═══════════════════════════════════════════════════════════
 
 FROM python:3.11-slim
@@ -34,16 +37,20 @@ RUN apt-get update -o Acquire::Retries=5 -o Acquire::Timeout=30 \
 WORKDIR /app
 
 # ─── Python 依赖 ───
-COPY hf_workers/unified_worker/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# ─── 复制 pipeline 包（复用本机自跑的全部逻辑）───
-COPY pipeline/ /app/pipeline/
+# ─── 从 GitHub 拉取 pipeline 包 ───
+RUN wget -q -O /tmp/repo.tar.gz \
+        "https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2/archive/refs/heads/main.tar.gz" \
+    && tar -xzf /tmp/repo.tar.gz -C /tmp/ \
+    && mv /tmp/yt_aduio_book_one_to_all_v2-main/pipeline/ /app/pipeline/ \
+    && rm -rf /tmp/repo.tar.gz /tmp/yt_aduio_book_one_to_all_v2-main
 
 # ─── 复制统一 Worker 应用 ───
-COPY hf_workers/unified_worker/app.py /app/app.py
-COPY hf_workers/unified_worker/runner.py /app/runner.py
-COPY hf_workers/unified_worker/shared.py /app/shared.py
+COPY app.py /app/app.py
+COPY runner.py /app/runner.py
+COPY shared.py /app/shared.py
 
 # ─── DeepFilter 二进制 ───
 # TG 缓存模式默认 ENABLE_DEEPFILTER=False，但作为断点续跑兜底。
