@@ -77,6 +77,7 @@ def _build_youtube_with_proxy(credentials, channel_name: str):
         proxy_pass=_extract_proxy_pass(proxy_url),
     )
     http = httplib2.Http(proxy_info=proxy_info)
+    http.follow_redirects = False
     authorized_http = AuthorizedHttp(credentials, http=http)
     return build("youtube", "v3", http=authorized_http, cache_discovery=False)
 
