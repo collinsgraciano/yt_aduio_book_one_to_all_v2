@@ -85,7 +85,11 @@
         <div class="card p-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0"><i class="bi bi-clock-history"></i> 已配置的定时任务</h5>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge bg-light text-dark border" id="vps-time-display" title="VPS 服务器当前时间">
+                        <i class="bi bi-clock"></i>
+                        <span id="vps-time-text">--:--:--</span>
+                    </span>
                     <button class="btn btn-outline-primary btn-sm" onclick="loadScheduledTasks()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
                 </div>
             </div>
@@ -267,7 +271,7 @@ async function loadScheduledTasks() {
                 <td>${t.channel_display_name || t.channel_name}</td>
                 <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
                 <td>${statusBadge}</td>
-                <td><small>${fmtTime(t.next_run_at)}</small></td>
+                <td><small>${fmtTime(t.next_run_at)}</small>${t.next_run_at ? `<br><span class="badge bg-light text-dark border small" data-countdown="${t.next_run_at}">${calcCountdown(t.next_run_at)}</span>` : ''}</td>
                 <td><small>${fmtTime(t.last_run_at)}</small></td>
                 <td>${lastStatusBadge}${t.last_run_message ? ` <small class="text-muted">${escapeHtml(t.last_run_message)}</small>` : ''}</td>
                 <td>
@@ -494,6 +498,58 @@ async function deleteAllTasks() {
 }
 
 // ═══════════════════════════════════════════
+// VPS 时间 & 倒计时
+// ═══════════════════════════════════════════
+
+let _vpsTimeOffset = 0; // VPS 时间与本地时间的偏移（ms）
+
+async function syncVpsTime() {
+    try {
+        const data = await api('/api/scheduled-tasks/server-time');
+        const vpsTime = new Date(data.local);
+        _vpsTimeOffset = vpsTime.getTime() - Date.now();
+        updateVpsTimeDisplay();
+    } catch (e) {
+        // 回退：使用浏览器本地时间
+        _vpsTimeOffset = 0;
+        updateVpsTimeDisplay();
+    }
+}
+
+function getVpsNow() {
+    return new Date(Date.now() + _vpsTimeOffset);
+}
+
+function updateVpsTimeDisplay() {
+    const now = getVpsNow();
+    const text = now.toLocaleString('zh-CN', { hour12: false });
+    const el = document.getElementById('vps-time-text');
+    if (el) el.textContent = text;
+}
+
+function calcCountdown(targetIso) {
+    if (!targetIso) return '';
+    const target = new Date(targetIso);
+    const now = getVpsNow();
+    const diff = target - now;
+    if (diff <= 0) return '已到期';
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    if (hours > 24) return `${Math.floor(hours / 24)}天${hours % 24}小时后`;
+    if (hours > 0) return `${hours}时${mins}分后`;
+    if (mins > 0) return `${mins}分${secs}秒后`;
+    return `${secs}秒后`;
+}
+
+function refreshAllCountdowns() {
+    document.querySelectorAll('[data-countdown]').forEach(el => {
+        const target = el.getAttribute('data-countdown');
+        el.textContent = calcCountdown(target);
+    });
+}
+
+// ═══════════════════════════════════════════
 // 通用
 // ═══════════════════════════════════════════
 
@@ -537,9 +593,14 @@ async function loadCategories() {
 
 loadChannels();
 loadCategories();
+syncVpsTime();
 loadScheduledTasks();
+// VPS 时间每秒刷新
+setInterval(updateVpsTimeDisplay, 1000);
+// 倒计时每秒刷新
+setInterval(refreshAllCountdowns, 1000);
+// 定时任务列表每 30s 刷新一次
 setInterval(() => {
-    // 定时任务列表每 30s 刷新一次
     loadScheduledTasks();
 }, 30000);
 </script>

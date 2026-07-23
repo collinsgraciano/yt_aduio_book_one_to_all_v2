@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -11,6 +12,17 @@ from ..services import scheduler_service
 
 router = APIRouter(prefix="/api/scheduled-tasks", tags=["定时任务"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/server-time")
+def get_server_time():
+    """获取服务器当前时间（用于前端显示倒计时参考）。"""
+    now = datetime.now(timezone.utc)
+    return {
+        "utc": now.isoformat(),
+        "local": now.astimezone().isoformat(),
+        "timezone": now.astimezone().tzname(),
+    }
 
 
 class CreateScheduledTaskRequest(BaseModel):
