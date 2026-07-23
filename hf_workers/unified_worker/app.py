@@ -224,7 +224,7 @@ def _fetch_pipeline_config(channel: str) -> dict:
     global _cached_pipeline_config
     with _config_lock:
         if _cached_pipeline_config and _cached_pipeline_config.get("_channel") == channel:
-            return _cached_pipeline_config
+            return dict(_cached_pipeline_config)
 
     if not VPS_RELAY_URL:
         return {"POSTGRES_DSN": POSTGRES_DSN, "OUTPUT_ROOT": OUTPUT_ROOT, "YOUTUBE_CHANNEL_NAME": channel}
@@ -240,7 +240,7 @@ def _fetch_pipeline_config(channel: str) -> dict:
         with _config_lock:
             _cached_pipeline_config = config
         logger.info("[配置] 流水线配置拉取成功: channel=%s", channel)
-        return config
+        return dict(config)
     except Exception as e:
         logger.error("[配置] 流水线配置拉取失败: %s", e)
         return {"POSTGRES_DSN": POSTGRES_DSN, "OUTPUT_ROOT": OUTPUT_ROOT, "YOUTUBE_CHANNEL_NAME": channel}
