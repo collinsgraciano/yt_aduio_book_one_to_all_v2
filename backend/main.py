@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from .settings import settings as app_settings
 from .auth import AuthMiddleware, COOKIE_NAME, COOKIE_MAX_AGE, create_auth_cookie_value
-from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf
+from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf, scheduled_tasks
 
 # ─── 日志配置 ───
 logging.basicConfig(
@@ -115,7 +115,26 @@ async def lifespan(app: FastAPI):
                 updated_at     timestamptz NOT NULL DEFAULT now()
             )
         """))
-        logger.info("数据库迁移完成: run_tasks + global_settings + books + channels + audiobook_chapters + hf_jobs 列/索引补全")
+        # 7. 定时任务表（定时执行 HF 外包任务）
+        db_execute(pg_sql.SQL("""
+            CREATE TABLE IF NOT EXISTS public.scheduled_tasks (
+                schedule_id     serial PRIMARY KEY,
+                name            text NOT NULL DEFAULT '',
+                channel_name    text NOT NULL,
+                cron_expr       text NOT NULL,
+                category        text NOT NULL DEFAULT '',
+                is_enabled      boolean NOT NULL DEFAULT true,
+                last_run_at     timestamptz,
+                last_run_status varchar(50),
+                last_run_message text,
+                next_run_at     timestamptz,
+                created_at      timestamptz NOT NULL DEFAULT now(),
+                updated_at      timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run ON public.scheduled_tasks(next_run_at) WHERE is_enabled = true"))
+        db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_channel ON public.scheduled_tasks(channel_name)"))
+        logger.info("数据库迁移完成: run_tasks + global_settings + books + channels + audiobook_chapters + hf_jobs + scheduled_tasks 列/索引补全")
     except Exception as e:
         logger.warning(f"数据库迁移失败（非致命）: {e}")
 
@@ -127,9 +146,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"启动清理失败（非致命）: {e}")
 
+    # 启动定时任务调度器
+    try:
+        from .services.scheduler_service import refresh_next_run_times, start_scheduler
+        refresh_next_run_times()
+        start_scheduler()
+        logger.info("定时任务调度器已启动")
+    except Exception as e:
+        logger.warning(f"定时任务调度器启动失败（非致命）: {e}")
+
     yield
 
     # ── 关闭 ──
+    # 停止定时任务调度器
+    try:
+        from .services.scheduler_service import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
     # 关闭 backend 数据库连接池
     try:
         from .database import close_pool
@@ -167,6 +201,7 @@ app.include_router(system_api.router)
 app.include_router(tests.router)
 app.include_router(tests_hf.router)
 app.include_router(tasks_hf.router)
+app.include_router(scheduled_tasks.router)
 
 # ─── Jinja2 模板 ───
 templates_dir = Path(__file__).parent / "templates"

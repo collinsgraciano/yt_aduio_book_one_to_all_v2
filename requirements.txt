@@ -32,6 +32,7 @@ tqdm==4.66.2
 
 # ─── 工具 ───
 python-dotenv==1.0.1
+croniter>=2.0.0
 
 # ─── 代理支持 ───
 PySocks>=1.7.1
