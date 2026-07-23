@@ -1297,7 +1297,7 @@ def _upload_via_youtube_relay(
     log.info("🛰️ [token中继] 向 VPS 请求 access_token: %s", token_url)
 
     try:
-        resp = requests.get(token_url, params=params, timeout=30)
+        resp = requests.get(token_url, params=params, timeout=300)
         if resp.status_code != 200:
             log.error("❌ [token中继] HTTP %d: %s", resp.status_code, resp.text[:500])
             return False
