@@ -40,6 +40,7 @@ class BgmMixRequest(BaseModel):
     ducking_mode: str = "sidechain"
     bgm_base_gain_db: int = -15
     sc_threshold_db: int = -30
+    sc_threshold_offset_db: int = -5
     sc_ratio: int = 8
     sc_attack_ms: int = 5
     sc_release_ms: int = 400

@@ -442,6 +442,7 @@ def mix_with_bgm(
     ducking_mode="sidechain",
     bgm_base_gain_db=-15,
     sc_threshold_db=-30,
+    sc_threshold_offset_db=-5,
     sc_ratio=8,
     sc_attack_ms=5,
     sc_release_ms=400,
@@ -454,21 +455,32 @@ def mix_with_bgm(
         analysis = analyze_audio(orig_audio)
 
         # ── 侧链模式：跳过动态音量和频谱塑形，保留 BGM 原始指纹 ──
-        if ducking_mode == "sidechain":
+        is_sidechain = ducking_mode in ("sidechain", "sidechain_adaptive")
+        if is_sidechain:
             dyn_vol = False
             spec_shape = False
             effective_vol_offset = bgm_base_gain_db
-            log.info(
-                "🎛️ BGM 侧链压缩模式: base_gain=%ddB threshold=%ddB ratio=%d:1",
-                bgm_base_gain_db, sc_threshold_db, sc_ratio,
-            )
+
+            # sidechain_adaptive: 阈值随旁白 RMS 动态计算，保证不同章节 BGM/旁白比例恒定
+            if ducking_mode == "sidechain_adaptive":
+                sc_threshold_db = analysis["rms_dbfs"] + sc_threshold_offset_db
+                log.info(
+                    "🎛️ BGM 自适应侧链模式: base_gain=%ddB threshold=旁白RMS(%.1fdB)+%ddB=%.1fdB ratio=%d:1",
+                    bgm_base_gain_db, analysis["rms_dbfs"], sc_threshold_offset_db,
+                    sc_threshold_db, sc_ratio,
+                )
+            else:
+                log.info(
+                    "🎛️ BGM 侧链压缩模式: base_gain=%ddB threshold=%ddB ratio=%d:1",
+                    bgm_base_gain_db, sc_threshold_db, sc_ratio,
+                )
         else:
             effective_vol_offset = volume_offset_db
 
         # ── BGM 首尾独立段（仅 sidechain 模式）：旁白前后加静音，给 Content ID 干净指纹参考 ──
         narr_input_path = input_path
         narr_temp_path = None
-        if intro_outro_seconds > 0 and ducking_mode == "sidechain":
+        if intro_outro_seconds > 0 and is_sidechain:
             pad_ms = intro_outro_seconds * 1000
             silence = AudioSegment.silent(
                 duration=pad_ms, frame_rate=orig_audio.frame_rate,
@@ -550,7 +562,7 @@ def mix_with_bgm(
 
         # 回退方案：pydub overlay（内存占用较高）
         # sidechain 模式下 pydub 无法做侧链压缩，补偿增益到旧版安全电平
-        if ducking_mode == "sidechain":
+        if is_sidechain:
             compensate_db = volume_offset_db - bgm_base_gain_db
             log.warning(
                 "pydub 回退：侧链压缩不可用，BGM 增益补偿 %.0fdB → %.0fdB",
@@ -606,7 +618,7 @@ def _ffmpeg_overlay(
 
     ducking_mode:
       - "amix": 旧版简单叠加（amix + volume=2.0）
-      - "sidechain": 侧链压缩（旁白说话时BGM自动压低，静默时BGM升高）
+      - "sidechain" / "sidechain_adaptive": 侧链压缩（旁白说话时BGM自动压低，静默时BGM升高）
     """
     bgm_temp_path = None
     try:
@@ -620,7 +632,7 @@ def _ffmpeg_overlay(
         bgm_temp.close()
         bgm_audio.export(bgm_temp_path, format="wav")
 
-        if ducking_mode == "sidechain":
+        if ducking_mode in ("sidechain", "sidechain_adaptive"):
             # 侧链压缩：旁白作为 sidechain key，BGM 被压缩
             # 旁白 RMS 超过 threshold 时 → BGM 被压低 ratio:1
             # 旁白静默时 → BGM 以原始增益播放（Content ID 可检测）

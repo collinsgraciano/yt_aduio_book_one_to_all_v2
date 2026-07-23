@@ -523,6 +523,7 @@ def run_bgm_test(params: dict, config: dict) -> dict:
                     "ducking_mode": params.get("ducking_mode", "sidechain"),
                     "bgm_base_gain_db": params.get("bgm_base_gain_db", -15),
                     "sc_threshold_db": params.get("sc_threshold_db", -30),
+                    "sc_threshold_offset_db": params.get("sc_threshold_offset_db", -5),
                     "sc_ratio": params.get("sc_ratio", 8),
                     "sc_attack_ms": params.get("sc_attack_ms", 5),
                     "sc_release_ms": params.get("sc_release_ms", 400),

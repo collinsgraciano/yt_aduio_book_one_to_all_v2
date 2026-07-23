@@ -182,7 +182,8 @@
             <div class="col-md-2">
                 <label class="form-label small fw-bold">降噪模式</label>
                 <select class="form-select form-select-sm" id="ducking_mode">
-                    <option value="sidechain">侧链压缩(推荐)</option>
+                    <option value="sidechain_adaptive">自适应侧链(推荐)</option>
+                    <option value="sidechain">固定侧链</option>
                     <option value="envelope">音量包络(旧版)</option>
                 </select>
             </div>
@@ -193,6 +194,11 @@
             <div class="col-md-2">
                 <label class="form-label small fw-bold">侧链阈值(dB)</label>
                 <input type="number" class="form-control form-control-sm" id="sc_threshold_db" value="-30">
+                <small class="text-muted">固定侧链用</small>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small fw-bold">自适应偏移(dB)</label>
+                <input type="number" class="form-control form-control-sm" id="sc_threshold_offset_db" value="-5">
             </div>
             <div class="col-md-1">
                 <label class="form-label small fw-bold">压缩比</label>
@@ -202,7 +208,7 @@
                 <label class="form-label small fw-bold">启动(ms)</label>
                 <input type="number" class="form-control form-control-sm" id="sc_attack_ms" value="5">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <label class="form-label small fw-bold">释放(ms)</label>
                 <input type="number" class="form-control form-control-sm" id="sc_release_ms" value="400">
             </div>
@@ -244,8 +250,8 @@ const RELEVANT_KEYS = [
     "FADE_DURATION_MS", "MIN_VOLUME_DB", "ENABLE_DYNAMIC_VOLUME",
     "ENABLE_SPECTRAL_SHAPING", "STEREO_OFFSET",
     "BGM_DUCKING_MODE", "BGM_BASE_GAIN_DB", "BGM_DUCK_THRESHOLD_DB",
-    "BGM_DUCK_RATIO", "BGM_DUCK_ATTACK_MS", "BGM_DUCK_RELEASE_MS",
-    "BGM_INTRO_OUTRO_SECONDS",
+    "BGM_DUCK_THRESHOLD_OFFSET_DB", "BGM_DUCK_RATIO", "BGM_DUCK_ATTACK_MS",
+    "BGM_DUCK_RELEASE_MS", "BGM_INTRO_OUTRO_SECONDS",
 ];
 let settingsSchema = {};
 
@@ -331,6 +337,7 @@ function applyGlobalSettingsToForm(settings) {
     document.getElementById('ducking_mode').value = dm;
     setVal('bgm_base_gain_db', 'BGM_BASE_GAIN_DB', -15);
     setVal('sc_threshold_db', 'BGM_DUCK_THRESHOLD_DB', -30);
+    setVal('sc_threshold_offset_db', 'BGM_DUCK_THRESHOLD_OFFSET_DB', -5);
     setVal('sc_ratio', 'BGM_DUCK_RATIO', 8);
     setVal('sc_attack_ms', 'BGM_DUCK_ATTACK_MS', 5);
     setVal('sc_release_ms', 'BGM_DUCK_RELEASE_MS', 400);
@@ -613,6 +620,7 @@ async function runMix() {
         ducking_mode: document.getElementById('ducking_mode').value,
         bgm_base_gain_db: parseInt(document.getElementById('bgm_base_gain_db').value) || -15,
         sc_threshold_db: parseInt(document.getElementById('sc_threshold_db').value) || -30,
+        sc_threshold_offset_db: parseInt(document.getElementById('sc_threshold_offset_db').value) || -5,
         sc_ratio: parseInt(document.getElementById('sc_ratio').value) || 8,
         sc_attack_ms: parseInt(document.getElementById('sc_attack_ms').value) || 5,
         sc_release_ms: parseInt(document.getElementById('sc_release_ms').value) || 400,

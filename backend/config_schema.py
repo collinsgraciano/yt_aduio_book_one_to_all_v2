@@ -202,8 +202,8 @@ CONFIG_SCHEMA: dict[str, dict] = {
     },
     "BGM_DUCKING_MODE": {
         "type": "enum", "category": "🔊 音频处理", "label": "BGM降噪模式",
-        "default": "sidechain", "options": ["envelope", "sidechain"],
-        "description": "sidechain=侧链压缩(旁白说话时BGM自动压低，静默时BGM升高利于Content ID检测)；envelope=旧版音量包络跟随",
+        "default": "sidechain", "options": ["envelope", "sidechain", "sidechain_adaptive"],
+        "description": "sidechain=固定阈值侧链压缩；sidechain_adaptive=自适应阈值(按旁白RMS动态计算,比例恒定)；envelope=旧版音量包络跟随",
     },
     "BGM_BASE_GAIN_DB": {
         "type": "int", "category": "🔊 音频处理", "label": "BGM基础增益(dB)",
@@ -213,7 +213,12 @@ CONFIG_SCHEMA: dict[str, dict] = {
     "BGM_DUCK_THRESHOLD_DB": {
         "type": "int", "category": "🔊 音频处理", "label": "侧链阈值(dB)",
         "default": -30, "min": -60, "max": 0,
-        "description": "旁白RMS超过此阈值时触发BGM压缩",
+        "description": "sidechain模式：旁白RMS超过此固定阈值时触发BGM压缩",
+    },
+    "BGM_DUCK_THRESHOLD_OFFSET_DB": {
+        "type": "int", "category": "🔊 音频处理", "label": "自适应阈值偏移(dB)",
+        "default": -5, "min": -30, "max": 0,
+        "description": "sidechain_adaptive模式：侧链阈值=旁白RMS+此偏移，使不同章节BGM/旁白比例恒定",
     },
     "BGM_DUCK_RATIO": {
         "type": "int", "category": "🔊 音频处理", "label": "侧链压缩比",

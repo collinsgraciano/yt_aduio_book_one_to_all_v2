@@ -619,6 +619,7 @@ def build_final_audio_from_chapter_paths(chapter_paths, working_dir, merged_path
                 ducking_mode=str(getattr(cfg, "BGM_DUCKING_MODE", "sidechain")),
                 bgm_base_gain_db=int(getattr(cfg, "BGM_BASE_GAIN_DB", -15)),
                 sc_threshold_db=int(getattr(cfg, "BGM_DUCK_THRESHOLD_DB", -30)),
+                sc_threshold_offset_db=int(getattr(cfg, "BGM_DUCK_THRESHOLD_OFFSET_DB", -5)),
                 sc_ratio=int(getattr(cfg, "BGM_DUCK_RATIO", 8)),
                 sc_attack_ms=int(getattr(cfg, "BGM_DUCK_ATTACK_MS", 5)),
                 sc_release_ms=int(getattr(cfg, "BGM_DUCK_RELEASE_MS", 400)),
