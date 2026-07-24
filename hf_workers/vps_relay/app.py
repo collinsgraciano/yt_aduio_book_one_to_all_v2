@@ -1436,7 +1436,7 @@ def api_status():
     # 最近任务
     recent_jobs = _fetch_all(
         "SELECT job_id, job_type, book_id, channel_name, status, worker_id, created_at, finished_at, error_message "
-        "FROM public.hf_jobs ORDER BY created_at DESC LIMIT 30"
+        "FROM public.hf_jobs ORDER BY created_at DESC LIMIT 10"
     )
 
     return jsonify({
@@ -1608,7 +1608,22 @@ def api_delete_pending():
     return jsonify({"ok": True, "deleted": count})
 
 
-def _fetch_channel_config(channel: str) -> dict:
+@app.route("/api/clear-worker-stats", methods=["POST"])
+def api_clear_worker_stats():
+    """清空 Worker 业绩统计表。"""
+    count = _execute("DELETE FROM public.hf_worker_stats")
+    logger.info("[清理] 清空 %d 条 Worker 业绩统计", count)
+    return jsonify({"ok": True, "deleted": count})
+
+
+@app.route("/api/clear-jobs", methods=["POST"])
+def api_clear_jobs():
+    """清空所有历史任务（done/failed）。"""
+    count = _execute(
+        "DELETE FROM public.hf_jobs WHERE status IN ('done', 'failed')"
+    )
+    logger.info("[清理] 清空 %d 条历史任务", count)
+    return jsonify({"ok": True, "deleted": count})
     """读取频道级配置（TARGET_CATEGORY, PROJECT_FLAG, MAX_PROCESS_COUNT 等）。
 
     从 channel_configs 表的 config_json 中读取，
@@ -1873,7 +1888,8 @@ th{background:#252836;color:#8b8dff}
 .sched-status-dot.stopped{background:#f87171}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 /* HF 槽位可视化 */
-.worker-card{background:#0f1117;border:1px solid #2a2d39;border-radius:8px;padding:16px;margin-bottom:16px}
+.worker-cards-row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.worker-card{background:#0f1117;border:1px solid #2a2d39;border-radius:8px;padding:16px;flex:1;min-width:340px;max-width:520px}
 .worker-card.offline{opacity:0.6}
 .worker-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .worker-header .w-title{font-size:15px;font-weight:bold}
@@ -1929,11 +1945,12 @@ th{background:#252836;color:#8b8dff}
     <button class="danger" onclick="redeployAll()">🔄 重新部署全部 Worker</button>
     <span id="redeploy-result" style="margin-left:12px"></span>
   </div>
-  <div id="workers"></div>
+  <div id="workers" class="worker-cards-row"></div>
 </div>
 
 <div class="section">
   <h2>Worker 业绩统计</h2>
+  <div style="margin-bottom:8px"><button class="danger" onclick="clearWorkerStats()">清空业绩统计</button></div>
   <table id="worker-stats"><thead><tr>
     <th>Worker ID</th><th>类型</th><th>总任务</th><th>成功</th><th>失败</th>
     <th>累计耗时</th><th>最后任务时间</th>
@@ -1941,7 +1958,8 @@ th{background:#252836;color:#8b8dff}
 </div>
 
 <div class="section">
-  <h2>最近任务</h2>
+  <h2>最近任务 <span style="font-size:13px;color:#666">(最多显示10条)</span></h2>
+  <div style="margin-bottom:8px"><button class="danger" onclick="clearRecentJobs()">清空历史任务</button></div>
   <table id="recent-jobs"><thead><tr>
     <th>ID</th><th>类型</th><th>书ID</th><th>频道</th><th>状态</th><th>Worker</th><th>创建时间</th><th>错误</th>
   </tr></thead><tbody></tbody></table>
@@ -2177,6 +2195,16 @@ async function deletePending(){
 if(!confirm('确认删除所有待处理（pending）任务？此操作不可撤销。'))return;
 const r=await fetch(API+'/delete-pending',{method:'POST'}); const d=await r.json();
 alert('删除了 '+d.deleted+' 个任务'); loadStatus();
+}
+async function clearWorkerStats(){
+if(!confirm('确认清空所有 Worker 业绩统计？此操作不可撤销。'))return;
+const r=await fetch(API+'/clear-worker-stats',{method:'POST'}); const d=await r.json();
+alert('清空了 '+d.deleted+' 条记录'); loadStatus();
+}
+async function clearRecentJobs(){
+if(!confirm('确认清空所有历史任务（done/failed）？此操作不可撤销。'))return;
+const r=await fetch(API+'/clear-jobs',{method:'POST'}); const d=await r.json();
+alert('清空了 '+d.deleted+' 条任务'); loadStatus();
 }
 async function trigger(url){
   await fetch(API+'/trigger',{method:'POST',headers:{'Content-Type':'application/json'},
