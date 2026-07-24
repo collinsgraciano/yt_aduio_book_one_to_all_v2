@@ -264,8 +264,10 @@ CONFIG_SCHEMA: dict[str, dict] = {
         "default": True,
     },
     "API_PRIORITY_ORDER": {
-        "type": "str", "category": "🎨 AI 生成", "label": "API优先级",
+        "type": "enum", "category": "🎨 AI 生成", "label": "API优先级",
         "default": "modelscope,sensenova",
+        "options": ["modelscope,sensenova", "sensenova,modelscope"],
+        "description": "modelscope,sensenova=ModelScope优先；sensenova,modelscope=Sensenova优先",
     },
     "MODELSCOPE_TOKEN_SWITCH_DELAY_SECONDS": {
         "type": "int", "category": "🎨 AI 生成", "label": "Token切换间隔(秒)",
