@@ -925,7 +925,7 @@ async function stopBatch(){await fetch('/batch-stop',{method:'POST'});load();}
 async function refresh(){const r=await fetch('/refresh-config',{method:'POST'});const d=await r.json();alert(d.ok?'配置已刷新':'刷新失败');load();}
 async function testRelay(){const r=await fetch('/test-relay');const d=await r.json();alert(d.ok?'VPS中继可达':'失败: '+d.error);}
 async function syncBgm(){const r=await fetch('/sync-bgm',{method:'POST'});const d=await r.json();alert(d.ok?'BGM下载已启动':'失败: '+d.error);}
-async function redeploy(){if(!confirm('确认重新部署？容器将退出并自动重启，启动时从 GitHub 拉取最新代码。'))return;const r=await fetch('/redeploy',{method:'POST'});const d=await r.json();if(d.ok){alert('✅ '+d.message+'\n\n页面将在几秒后断开，重启后自动恢复。');}else{alert('❌ 重新部署失败: '+(d.error||'未知错误'));}}
+async function redeploy(){if(!confirm('确认重新部署？容器将退出并自动重启，启动时从 GitHub 拉取最新代码。'))return;const r=await fetch('/redeploy',{method:'POST'});const d=await r.json();if(d.ok){alert('✅ '+d.message+'\\n\\n页面将在几秒后断开，重启后自动恢复。');}else{alert('❌ 重新部署失败: '+(d.error||'未知错误'));}}
 async function loadBgm(){try{const r=await fetch('/bgm-status');const d=await r.json();const s=d.sync_status||{};let txt=`🎵 BGM: ${d.music_count}首`;if(s.running){txt+=` | 下载中 ${s.done}/${s.total} ${s.current||''}`;}else if(s.error){txt+=` | ❌${s.error}`;}document.getElementById('bgm-info').textContent=txt;}catch(e){}}
 load();loadBgm();setInterval(load,3000);setInterval(loadBgm,5000);
 </script></body></html>"""
