@@ -1536,6 +1536,42 @@ def api_trigger():
     return jsonify({"ok": ok})
 
 
+@app.route("/api/redeploy-worker", methods=["POST"])
+def api_redeploy_worker():
+    """触发指定 Worker 重新部署（调用 Worker 的 /redeploy 端点）。"""
+    data = request.get_json(silent=True) or {}
+    worker_url = data.get("worker_url", "")
+    if not worker_url:
+        return jsonify({"ok": False, "error": "缺少 worker_url"}), 400
+    try:
+        resp = requests.post(f"{worker_url}/redeploy", timeout=10)
+        result = resp.json()
+        logger.info("[重新部署] Worker %s: %s", worker_url, result.get("message", ""))
+        return jsonify(result)
+    except Exception as e:
+        logger.error("[重新部署] Worker %s 失败: %s", worker_url, e)
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+
+@app.route("/api/redeploy-all", methods=["POST"])
+def api_redeploy_all():
+    """触发所有 Worker 重新部署。"""
+    worker_urls = _cfg("worker_urls") or []
+    if not worker_urls:
+        return jsonify({"ok": False, "error": "未配置 Worker URLs"}), 400
+    results = []
+    for url in worker_urls:
+        try:
+            resp = requests.post(f"{url}/redeploy", timeout=10)
+            r = resp.json()
+            results.append({"url": url, "ok": r.get("ok", False), "message": r.get("message", r.get("error", ""))})
+            logger.info("[重新部署] Worker %s: %s", url, r.get("message", ""))
+        except Exception as e:
+            results.append({"url": url, "ok": False, "error": str(e)})
+            logger.error("[重新部署] Worker %s 失败: %s", url, e)
+    return jsonify({"ok": True, "results": results})
+
+
 @app.route("/api/reset-stuck", methods=["POST"])
 def api_reset_stuck():
     """手动重置卡住任务。"""
@@ -1872,6 +1908,10 @@ th{background:#252836;color:#8b8dff}
 
 <div class="section">
   <h2>🖥️ HF Worker 槽位状态</h2>
+  <div style="margin-bottom:12px">
+    <button class="danger" onclick="redeployAll()">🔄 重新部署全部 Worker</button>
+    <span id="redeploy-result" style="margin-left:12px"></span>
+  </div>
   <div id="workers"></div>
 </div>
 
@@ -2086,6 +2126,7 @@ async function loadStatus(){
           </div>` : ''}
           <div style="margin-top:10px">
             <button onclick="trigger('${w.url}')">触发认领</button>
+            <button class="danger" onclick="redeployWorker('${w.url}', this)">🔄 重新部署</button>
           </div>
         </div>`;
       }).join('');
@@ -2123,6 +2164,33 @@ alert('删除了 '+d.deleted+' 个任务'); loadStatus();
 async function trigger(url){
   await fetch(API+'/trigger',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({worker_url:url})}); loadStatus();
+}
+async function redeployWorker(url, btn){
+  if(!confirm('确认重新部署该 Worker？\\n容器将退出并自动重启，启动时从 GitHub 拉取最新代码。'))return;
+  btn.disabled=true; btn.textContent='部署中...';
+  try{
+    const r=await fetch(API+'/redeploy-worker',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({worker_url:url})});
+    const d=await r.json();
+    if(d.ok){alert('✅ '+d.message);}else{alert('❌ 失败: '+(d.error||'未知错误'));}
+  }catch(e){alert('❌ 请求失败: '+e.message);}
+  btn.disabled=false; btn.textContent='🔄 重新部署';
+}
+async function redeployAll(){
+  if(!confirm('确认重新部署所有 Worker？\\n所有容器将退出并自动重启。'))return;
+  const el=document.getElementById('redeploy-result');
+  el.textContent='⏳ 正在发送...';
+  try{
+    const r=await fetch(API+'/redeploy-all',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){
+      const ok=d.results.filter(r=>r.ok).length;
+      const fail=d.results.filter(r=>!r.ok).length;
+      el.innerHTML=`<span style="color:#4ade80">✅ ${ok} 成功</span>${fail?`<span style="color:#f87171"> ❌ ${fail} 失败</span>`:''}`;
+      if(fail) alert('部分失败:\\n'+d.results.filter(r=>!r.ok).map(r=>r.url+': '+(r.error||'')).join('\\n'));
+    }else{el.innerHTML='<span style="color:#f87171">❌ '+d.error+'</span>';}
+  }catch(e){el.innerHTML='<span style="color:#f87171">❌ '+e.message+'</span>';}
+  setTimeout(()=>el.textContent='', 10000);
 }
 
 // ── 配置管理 ──
