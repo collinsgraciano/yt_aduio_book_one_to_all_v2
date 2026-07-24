@@ -136,6 +136,7 @@ async def lifespan(app: FastAPI):
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_channel ON public.scheduled_tasks(channel_name)"))
         # scheduled_tasks 补充 config_overrides 列（定时任务自定义运行配置覆盖）
         db_execute(pg_sql.SQL("ALTER TABLE public.scheduled_tasks ADD COLUMN IF NOT EXISTS config_overrides jsonb"))
+        db_execute(pg_sql.SQL("ALTER TABLE public.scheduled_tasks ADD COLUMN IF NOT EXISTS group_name text NOT NULL DEFAULT ''"))
         logger.info("数据库迁移完成: run_tasks + global_settings + books + channels + audiobook_chapters + hf_jobs + scheduled_tasks 列/索引补全")
     except Exception as e:
         logger.warning(f"数据库迁移失败（非致命）: {e}")

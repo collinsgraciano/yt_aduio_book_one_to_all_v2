@@ -30,6 +30,7 @@ class CreateScheduledTaskRequest(BaseModel):
     cron_expr: str
     name: str = ""
     category: str = ""
+    group_name: str = ""
     config_overrides: dict | None = None
     is_enabled: bool = True
 
@@ -39,6 +40,7 @@ class BatchCreateScheduledTaskRequest(BaseModel):
     cron_expr: str
     name: str = ""
     category: str = ""
+    group_name: str = ""
     config_overrides: dict | None = None
     is_enabled: bool = True
 
@@ -52,14 +54,22 @@ class UpdateScheduledTaskRequest(BaseModel):
     cron_expr: str | None = None
     name: str | None = None
     category: str | None = None
+    group_name: str | None = None
     config_overrides: dict | None = None
 
 
 @router.get("")
-def list_scheduled_tasks():
-    """获取所有定时任务。"""
-    tasks = scheduler_service.list_scheduled_tasks()
+def list_scheduled_tasks(group_name: str = ""):
+    """获取所有定时任务（可选按分组筛选）。"""
+    tasks = scheduler_service.list_scheduled_tasks(group_name=group_name)
     return {"tasks": tasks, "total": len(tasks)}
+
+
+@router.get("/groups")
+def list_groups():
+    """获取所有定时任务分组列表。"""
+    groups = scheduler_service.list_groups()
+    return {"groups": groups}
 
 
 @router.post("")
@@ -71,6 +81,7 @@ def create_scheduled_task(body: CreateScheduledTaskRequest):
             cron_expr=body.cron_expr,
             name=body.name,
             category=body.category,
+            group_name=body.group_name,
             config_overrides=body.config_overrides,
             is_enabled=body.is_enabled,
         )
@@ -89,6 +100,7 @@ def batch_create_scheduled_tasks(body: BatchCreateScheduledTaskRequest):
         cron_expr=body.cron_expr,
         name=body.name,
         category=body.category,
+        group_name=body.group_name,
         config_overrides=body.config_overrides,
         is_enabled=body.is_enabled,
     )
@@ -106,6 +118,7 @@ def update_scheduled_task(schedule_id: int, body: UpdateScheduledTaskRequest):
             cron_expr=body.cron_expr,
             name=body.name,
             category=body.category,
+            group_name=body.group_name,
             config_overrides=body.config_overrides,
         )
         return {"ok": True, "task": task}

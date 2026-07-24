@@ -49,7 +49,12 @@
                     <label class="form-label small text-muted">名称（可选）</label>
                     <input type="text" class="form-control form-control-sm" id="sched-name" placeholder="如：每日定时投递">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-1">
+                    <label class="form-label small text-muted">分组</label>
+                    <input type="text" class="form-control form-control-sm" id="sched-group" list="group-list" placeholder="如：A组">
+                    <datalist id="group-list"></datalist>
+                </div>
+                <div class="col-md-2">
                     <label class="form-label small text-muted">Cron 表达式</label>
                     <div class="input-group input-group-sm">
                         <input type="text" class="form-control" id="sched-cron" value="0 3 * * *" placeholder="分 时 日 月 周">
@@ -98,7 +103,12 @@
         <!-- 定时任务列表 -->
         <div class="card p-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 已配置的定时任务</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> 已配置的定时任务</h5>
+                    <select class="form-select form-select-sm" id="filter-group" style="width:140px;" onchange="loadScheduledTasks()">
+                        <option value="">全部分组</option>
+                    </select>
+                </div>
                 <div class="d-flex gap-2 align-items-center">
                     <span class="badge bg-light text-dark border" id="vps-time-display" title="VPS 服务器当前时间">
                         <i class="bi bi-clock"></i>
@@ -120,7 +130,7 @@
                 <table class="table table-hover align-middle">
                     <thead><tr>
                         <th style="width:40px;"><input type="checkbox" id="sched-select-all" onchange="toggleSelectAllSched(this)" title="全选/取消全选"></th>
-                        <th>ID</th><th>名称</th><th>频道</th><th>Cron</th><th>状态</th><th>配置</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
+                        <th>ID</th><th>名称</th><th>分组</th><th>频道</th><th>Cron</th><th>状态</th><th>配置</th><th>下次执行</th><th>上次执行</th><th>上次结果</th><th>操作</th>
                     </tr></thead>
                     <tbody id="scheduled-tasks-tbody"></tbody>
                 </table>
@@ -377,6 +387,7 @@ async function createScheduledTask() {
     const selected = getSelectedChannels();
     const channelNames = selected.map(ch => ch.channel_name);
     const name = document.getElementById('sched-name').value.trim();
+    const groupName = document.getElementById('sched-group').value.trim();
     const cron = document.getElementById('sched-cron').value.trim();
     const category = document.getElementById('sched-category').value.trim();
     if (channelNames.length === 0) { showToast('请至少选择一个频道', 'warning'); return; }
@@ -388,13 +399,13 @@ async function createScheduledTask() {
         if (channelNames.length === 1) {
             const res = await api('/api/scheduled-tasks', {
                 method: 'POST',
-                body: JSON.stringify({ channel_name: channelNames[0], cron_expr: cron, name, category, config_overrides: configOverrides, is_enabled: true }),
+                body: JSON.stringify({ channel_name: channelNames[0], cron_expr: cron, name, category, group_name: groupName, config_overrides: configOverrides, is_enabled: true }),
             });
             showToast('定时任务创建成功');
         } else {
             const res = await api('/api/scheduled-tasks/batch-create', {
                 method: 'POST',
-                body: JSON.stringify({ channel_names: channelNames, cron_expr: cron, name, category, config_overrides: configOverrides, is_enabled: true }),
+                body: JSON.stringify({ channel_names: channelNames, cron_expr: cron, name, category, group_name: groupName, config_overrides: configOverrides, is_enabled: true }),
             });
             showToast(`批量创建完成: 成功 ${res.succeeded} 个${res.failed > 0 ? `，失败 ${res.failed} 个` : ''}`);
         }
@@ -407,6 +418,7 @@ async function createScheduledTask() {
         _overridesEditorLoaded = false;
         document.getElementById('overrides-editor').innerHTML = '';
         loadScheduledTasks();
+        loadGroups();
     } catch (e) { showToast('创建失败: ' + e.message, 'danger'); }
 }
 
@@ -414,7 +426,10 @@ async function createScheduledTask() {
 
 async function loadScheduledTasks() {
     try {
-        const data = await api('/api/scheduled-tasks');
+        const groupFilter = document.getElementById('filter-group')?.value || '';
+        const params = new URLSearchParams();
+        if (groupFilter) params.set('group_name', groupFilter);
+        const data = await api(`/api/scheduled-tasks?${params}`);
         const tbody = document.getElementById('scheduled-tasks-tbody');
         selectedSchedTasks.clear();
         updateSchedBatchBar();
@@ -433,6 +448,7 @@ async function loadScheduledTasks() {
                 <td><input type="checkbox" class="sched-task-checkbox" value="${t.schedule_id}" onchange="onSchedCheckChange(this)"></td>
                 <td><code>#${t.schedule_id}</code></td>
                 <td>${escapeHtml(t.name || '-')}</td>
+                <td>${t.group_name ? `<span class="badge bg-primary">${escapeHtml(t.group_name)}</span>` : '<span class="text-muted small">-</span>'}</td>
                 <td>${t.channel_display_name || t.channel_name}</td>
                 <td><code><small>${escapeHtml(t.cron_expr)}</small></code></td>
                 <td>${statusBadge}</td>
@@ -452,7 +468,7 @@ async function loadScheduledTasks() {
                     </button>
                 </td>
             </tr>`;
-        }).join('') || '<tr><td colspan="11" class="text-center text-muted">暂无定时任务</td></tr>';
+        }).join('') || '<tr><td colspan="12" class="text-center text-muted">暂无定时任务</td></tr>';
         document.getElementById('sched-select-all').checked = false;
     } catch (e) { showToast('加载定时任务失败: ' + e.message, 'danger'); }
 }
@@ -757,8 +773,31 @@ async function loadCategories() {
     } catch (e) {}
 }
 
+async function loadGroups() {
+    try {
+        const data = await api('/api/scheduled-tasks/groups');
+        const groups = data.groups || [];
+        // 筛选下拉
+        const filterSel = document.getElementById('filter-group');
+        if (filterSel) {
+            const current = filterSel.value;
+            filterSel.innerHTML = '<option value="">全部分组</option>' + groups.map(g =>
+                `<option value="${escapeHtml(g.group_name)}" ${current === g.group_name ? 'selected' : ''}>${escapeHtml(g.group_name)} (${g.task_count})</option>`
+            ).join('');
+        }
+        // 创建表单 datalist
+        const datalist = document.getElementById('group-list');
+        if (datalist) {
+            datalist.innerHTML = groups.map(g =>
+                `<option value="${escapeHtml(g.group_name)}">${g.task_count} 个任务</option>`
+            ).join('');
+        }
+    } catch (e) {}
+}
+
 loadChannels();
 loadCategories();
+loadGroups();
 syncVpsTime();
 loadScheduledTasks();
 // VPS 时间每秒刷新

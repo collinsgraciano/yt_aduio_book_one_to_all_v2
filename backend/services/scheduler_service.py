@@ -48,8 +48,32 @@ def _validate_cron(cron_expr: str) -> bool:
 # CRUD
 # ═══════════════════════════════════════════════════════════
 
-def list_scheduled_tasks() -> list[dict]:
-    """获取所有定时任务。"""
+def list_groups() -> list[dict]:
+    """获取所有分组及其任务数量。"""
+    return fetch_all(
+        sql.SQL("""
+            SELECT group_name, COUNT(*) AS task_count
+            FROM public.scheduled_tasks
+            WHERE group_name != ''
+            GROUP BY group_name
+            ORDER BY group_name
+        """)
+    )
+
+
+def list_scheduled_tasks(group_name: str = "") -> list[dict]:
+    """获取所有定时任务（可选按分组筛选）。"""
+    if group_name:
+        return fetch_all(
+            sql.SQL("""
+                SELECT st.*, c.display_name AS channel_display_name
+                FROM public.scheduled_tasks st
+                LEFT JOIN public.channels c ON c.channel_name = st.channel_name
+                WHERE st.group_name = %s
+                ORDER BY st.created_at DESC
+            """),
+            (group_name,),
+        )
     return fetch_all(
         sql.SQL("""
             SELECT st.*, c.display_name AS channel_display_name
@@ -65,6 +89,7 @@ def create_scheduled_task(
     cron_expr: str,
     name: str = "",
     category: str = "",
+    group_name: str = "",
     config_overrides: dict | None = None,
     is_enabled: bool = True,
 ) -> dict:
@@ -89,13 +114,13 @@ def create_scheduled_task(
     row = fetch_one(
         sql.SQL("""
             INSERT INTO public.scheduled_tasks
-                (name, channel_name, cron_expr, category, config_overrides, is_enabled, next_run_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (name, channel_name, cron_expr, category, group_name, config_overrides, is_enabled, next_run_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """),
-        (name, channel_name, cron_expr, category, Jsonb(config_overrides) if config_overrides else None, is_enabled, next_run),
+        (name, channel_name, cron_expr, category, group_name, Jsonb(config_overrides) if config_overrides else None, is_enabled, next_run),
     )
-    logger.info("创建定时任务: channel=%s cron=%s enabled=%s overrides=%s", channel_name, cron_expr, is_enabled, bool(config_overrides))
+    logger.info("创建定时任务: channel=%s cron=%s enabled=%s group=%s overrides=%s", channel_name, cron_expr, is_enabled, group_name or "(无)", bool(config_overrides))
     return row
 
 
@@ -104,6 +129,7 @@ def create_scheduled_tasks_batch(
     cron_expr: str,
     name: str = "",
     category: str = "",
+    group_name: str = "",
     config_overrides: dict | None = None,
     is_enabled: bool = True,
 ) -> list[dict]:
@@ -111,7 +137,7 @@ def create_scheduled_tasks_batch(
     results = []
     for ch in channel_names:
         try:
-            task = create_scheduled_task(ch, cron_expr, name, category, config_overrides, is_enabled)
+            task = create_scheduled_task(ch, cron_expr, name, category, group_name, config_overrides, is_enabled)
             results.append({"channel_name": ch, "ok": True, "task": task})
         except ValueError as e:
             results.append({"channel_name": ch, "ok": False, "error": str(e)})
@@ -127,6 +153,7 @@ def update_scheduled_task(
     cron_expr: str | None = None,
     name: str | None = None,
     category: str | None = None,
+    group_name: str | None = None,
     config_overrides: dict | None = None,
 ) -> dict:
     """更新定时任务。"""
@@ -161,6 +188,9 @@ def update_scheduled_task(
 
     if category is not None:
         updates["category"] = category
+
+    if group_name is not None:
+        updates["group_name"] = group_name
 
     if config_overrides is not None:
         updates["config_overrides"] = Jsonb(config_overrides) if config_overrides else None
