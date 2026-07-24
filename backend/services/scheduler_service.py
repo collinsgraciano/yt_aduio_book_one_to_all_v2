@@ -303,6 +303,16 @@ def _execute_scheduled_task(task: dict) -> dict:
     """
     schedule_id = task["schedule_id"]
     channel_name = task["channel_name"]
+
+    # 重新检查任务是否仍启用（用户可能在调度器拾取后、执行前禁用了任务）
+    current = fetch_one(
+        sql.SQL("SELECT is_enabled FROM public.scheduled_tasks WHERE schedule_id = %s"),
+        (schedule_id,),
+    )
+    if not current or not current["is_enabled"]:
+        logger.info("[定时任务 %s] 任务已被禁用，跳过执行", schedule_id)
+        return {"ok": False, "error": "任务已被禁用"}
+
     category = task.get("category") or ""
     config_overrides = task.get("config_overrides") or None
     if config_overrides and not isinstance(config_overrides, dict):
@@ -406,24 +416,31 @@ def _scheduler_loop():
 
 
 def _check_and_run_due_tasks():
-    """查询到期任务并并发执行。"""
+    """查询到期任务并并发执行。
+
+    使用原子 UPDATE 抢占式认领：将到期任务的 next_run_at 清空（防止重复拾取），
+    然后提交到线程池执行。执行完成后由 _record_run_result 计算下次运行时间。
+    """
     now = datetime.now(timezone.utc)
-    due_tasks = fetch_all(
+
+    # 原子认领：将到期任务的 next_run_at 置 NULL，防止下一次扫描重复拾取
+    claimed = fetch_all(
         sql.SQL("""
-            SELECT * FROM public.scheduled_tasks
+            UPDATE public.scheduled_tasks
+            SET next_run_at = NULL, updated_at = now()
             WHERE is_enabled = true AND next_run_at IS NOT NULL AND next_run_at <= %s
-            ORDER BY next_run_at ASC
+            RETURNING *
         """),
         (now,),
     )
 
-    if not due_tasks:
+    if not claimed:
         return
 
-    logger.info("发现 %d 个到期定时任务，并发执行（最大 %d）", len(due_tasks), _MAX_CONCURRENT)
+    logger.info("发现 %d 个到期定时任务，并发执行（最大 %d）", len(claimed), _MAX_CONCURRENT)
 
     with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT, thread_name_prefix="sched-exec") as executor:
-        futures = {executor.submit(_execute_scheduled_task, task): task for task in due_tasks}
+        futures = {executor.submit(_execute_scheduled_task, task): task for task in claimed}
         for future in as_completed(futures):
             task = futures[future]
             try:
