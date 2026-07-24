@@ -1089,33 +1089,18 @@ def pipeline_config():
     channel = request.args.get("channel", "")
     relay_base = request.host_url.rstrip("/")
 
-    # 从 global_settings 读取共享配置 + 从面板运行时配置读取覆盖项
+    # 基础配置：中继地址 + 数据库 + 输出路径
     config = {
         "TELEGRAM_API_BASE": f"{relay_base}/tg-api",
         "YOUTUBE_OAUTH_BASE": f"{relay_base}/yt-api",
-        "TG_BOT_TOKEN": _fetch_global_setting("TG_BOT_TOKEN"),
-        "MODELSCOPE_TOKEN": _fetch_global_setting("MODELSCOPE_TOKEN"),
         "POSTGRES_DSN": POSTGRES_DSN,
         "OUTPUT_ROOT": "/tmp/output",
-        # 从 global_settings 读取全局配置项
-        "API_PRIORITY_ORDER": _fetch_global_setting("API_PRIORITY_ORDER") or "modelscope,sensenova",
-        "ENABLE_COVER_GENERATION": _fetch_global_setting("ENABLE_COVER_GENERATION") or "true",
-        "ENABLE_SEO_GENERATION": _fetch_global_setting("ENABLE_SEO_GENERATION") or "true",
-        "MIN_BOOK_DURATION_SECONDS": _fetch_global_setting("MIN_BOOK_DURATION_SECONDS") or "1800",
-        # 以下从面板运行时配置读取（可在 Web 面板修改）
-        "ENABLE_DEEPFILTER": _cfg("pipeline_enable_deepfilter", False),
-        "ENABLE_TG_AUDIO_CACHE": _cfg("pipeline_enable_tg_audio_cache", True),
-        "ONLY_TG_CACHED_BOOKS": _cfg("pipeline_only_tg_cached_books", True),
-        "TG_SERIAL_DOWNLOAD": _cfg("pipeline_tg_serial_download", True),
-        "TG_DOWNLOAD_INTERVAL_SECONDS": _cfg("pipeline_tg_download_interval_seconds", 3),
-        "SKIP_EXISTING": _cfg("pipeline_skip_existing", True),
-        "FORCE_REPROCESS": _cfg("pipeline_force_reprocess", False),
-        "QUIET_RUNTIME_OUTPUT": _cfg("pipeline_quiet_runtime_output", False),
-        "CLEANUP_INTERMEDIATE_FILES_AFTER_SUCCESS": _cfg("pipeline_cleanup_intermediate_files_after_success", True),
-        "YOUTUBE_SCHEDULE_AFTER_HOURS": _cfg("pipeline_youtube_schedule_after_hours", 24),
-        "YOUTUBE_DAILY_PUBLISH_LIMIT": _cfg("pipeline_youtube_daily_publish_limit", 3),
         "YOUTUBE_CHANNEL_NAME": channel,
     }
+
+    # 从 global_settings 读取全部全局共享配置（与后端 build_runtime_config 逻辑一致）
+    for row in _fetch_all("SELECT setting_key, setting_value FROM public.global_settings"):
+        config[row["setting_key"]] = row["setting_value"]
 
     # 合并频道级配置（从 channel_runtime_settings + channel_configs）
     if channel:
