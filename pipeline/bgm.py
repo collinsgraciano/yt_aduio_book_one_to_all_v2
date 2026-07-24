@@ -49,9 +49,11 @@ def load_music_segment_cached(music_path):
 # ============================================================================
 def analyze_audio(audio_segment):
     duration_ms = len(audio_segment)
-    rms_dbfs = audio_segment.dBFS
     peak_dbfs = audio_segment.max_dBFS
 
+    # ── 用 500ms 窗口分段，只统计有声音的部分算 RMS ──
+    # pydub 的 dBFS 包含静音段和呼吸声，拉低 RMS 导致 sidechain threshold 偏低
+    # 只取 dBFS > -50dB 的片段（排除静音和极低噪声），取线性均值再转回 dB
     chunk_size_ms = 500
     chunks = [
         audio_segment[i : i + chunk_size_ms]
@@ -60,13 +62,26 @@ def analyze_audio(audio_segment):
     ]
 
     chunk_levels = []
+    active_linear_sum = 0.0
+    active_count = 0
     for chunk in chunks:
         try:
             level = chunk.dBFS
             if level > -60:
                 chunk_levels.append(level)
+            if level > -50:
+                # 累积有效片段的线性功率，用于计算"有声音部分"的真实 RMS
+                active_linear_sum += 10 ** (level / 10.0)
+                active_count += 1
         except Exception:
             pass
+
+    if active_count > 0:
+        # 有效片段的线性平均 → 转回 dB，排除静音段对 RMS 的拉低效应
+        rms_dbfs = 10 * math.log10(active_linear_sum / active_count)
+    else:
+        rms_dbfs = audio_segment.dBFS
+
     dynamic_range_db = (max(chunk_levels) - min(chunk_levels)) if len(chunk_levels) >= 2 else 0
     return {
         "rms_dbfs": rms_dbfs,
