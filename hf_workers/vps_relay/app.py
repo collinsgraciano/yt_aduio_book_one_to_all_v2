@@ -128,8 +128,9 @@ def _execute(query, params=None):
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(query, params or ())
+            rowcount = cur.rowcount
         conn.commit()
-    return cur.rowcount
+    return rowcount
 
 
 def _fetch_global_setting(key: str) -> str:
