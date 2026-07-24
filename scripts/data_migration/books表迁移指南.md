@@ -64,12 +64,6 @@ bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:
 
 # 跳过确认
 bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:PASSWORD@TARGET_IP:5432/audiobook" --force
-
-# 后台运行（大数据量推荐）
-bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:PASSWORD@TARGET_IP:5432/audiobook" --force --bg
-
-# 自定义源容器名
-bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:PASSWORD@TARGET_IP:5432/audiobook" --container my_pg
 ```
 
 **实际示例：**
@@ -112,27 +106,6 @@ bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:
   源 VPS   books: 1234 行
   目标 VPS books: 1234 行（替换前: 567 行）
 ═══════════════════════════════════════════════════
-```
-
-### 后台运行模式
-
-大数据量传输时，使用 `--bg` 后台运行：
-
-```bash
-bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:PASSWORD@TARGET_IP:5432/audiobook" --force --bg
-```
-
-输出：
-
-```
-═══════════════════════════════════════════════════
-  后台运行已启动
-  日志: backups/transfer.log
-  PID:  12345
-═══════════════════════════════════════════════════
-
-  查看进度: tail -f backups/transfer.log
-  确认运行: ps -p 12345
 ```
 
 ### 完成后
@@ -194,30 +167,11 @@ gunzip -c backups/target_books_backup_20260721_120000.sql.gz | \
 docker-compose restart web
 ```
 
-### 快速回滚（直接从源 VPS 恢复）
-
-备份文件在源 VPS 上时，也可以直接远程恢复：
-
-```bash
-# 在源 VPS 上执行（直接远程恢复到目标 VPS）
-gunzip -c backups/target_books_backup_20260721_120000.sql.gz | \
-    docker exec -i audiobook_postgres psql "postgresql://audiobook_app:PASSWORD@TARGET_IP:5432/audiobook"
-```
-
 ---
 
 ## 6. 注意事项
 
-### 6.1 确认传输方向
-
-运行脚本前务必确认方向：
-
-- **脚本运行的机器 = 源**（数据来源）
-- **`--dsn` 指向的机器 = 目标**（被替换）
-
-脚本会显示源行数和目标行数，**确认无误后再输入 yes**。
-
-### 6.2 books 表无外键依赖
+### 6.1 books 表无外键依赖
 
 `books` 表没有被其他表通过外键引用，`TRUNCATE` 不影响其他表。以下表含 `book_id` 但均无 FK 约束：
 
@@ -228,7 +182,7 @@ gunzip -c backups/target_books_backup_20260721_120000.sql.gz | \
 | `task_queue` | ❌ 无影响 |
 | `hf_jobs` | ❌ 无影响 |
 
-### 6.3 关联数据清理（可选）
+### 6.2 关联数据清理（可选）
 
 迁移后目标 VPS 可能存在 `book_id` 不在 books 表中的孤立记录，按需清理：
 
@@ -240,7 +194,7 @@ docker exec audiobook_postgres psql -U audiobook_app -d audiobook -c "
 "
 ```
 
-### 6.4 迁移不影响的内容
+### 6.3 迁移不影响的内容
 
 - ✅ 频道配置（`channels`、`channel_configs`）
 - ✅ YouTube OAuth 凭证（`youtube_credentials`）
@@ -249,7 +203,7 @@ docker exec audiobook_postgres psql -U audiobook_app -d audiobook -c "
 - ✅ 任务记录（`run_tasks`、`run_task_logs`）
 - ✅ `.env` 配置文件
 
-### 6.5 安全提示
+### 6.4 安全提示
 
 连接串中包含数据库密码，注意：
 
@@ -262,16 +216,10 @@ docker exec audiobook_postgres psql -U audiobook_app -d audiobook -c "
 
 ### books_transfer.sh
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--dsn <连接串>` | 目标 VPS 的 PostgreSQL 连接字符串（必须） | — |
-| `--container <名称>` | 源 PostgreSQL 容器名 | `audiobook_postgres` |
-| `--force` | 跳过确认提示 | — |
-| `--bg` | 后台运行，日志输出到 `backups/transfer.log` | — |
-
-```bash
-bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:pass@1.2.3.4:5432/audiobook" --force --bg
-```
+| 参数 | 说明 |
+|------|------|
+| `--dsn <连接串>` | 目标 VPS 的 PostgreSQL 连接字符串（必须） |
+| `--force` | 跳过确认提示 |
 
 ---
 
@@ -284,12 +232,6 @@ ufw allow 5432/tcp
 # ═══ 源 VPS：一条命令完成 ═══
 cd /root/audiobook
 bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:inriynisse1991@85.121.48.55:5432/audiobook"
-
-# ═══ 大数据量：后台运行 ═══
-bash scripts/data_migration/books_transfer.sh --dsn "postgresql://audiobook_app:inriynisse1991@85.121.48.55:5432/audiobook" --force --bg
-
-# 查看进度
-tail -f backups/transfer.log
 
 # ═══ 目标 VPS：重启服务 ═══
 docker-compose restart web

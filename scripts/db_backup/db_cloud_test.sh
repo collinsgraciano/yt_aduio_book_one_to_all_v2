@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# ══════════════════════════════════════════════════════════════�?# 云盘备份连通性测试脚�?# ══════════════════════════════════════════════════════════════�?# 快速验证：容器连接 �?小型备份 �?上传 gdrive �?上传 mega �?清理
+# ═══════════════════════════════════════════════════════════════
+# 云盘备份连通性测试脚本
+# ═══════════════════════════════════════════════════════════════
+# 快速验证：容器连接 → 小型备份 → 上传 gdrive → 上传 mega → 清理
 # 不会传输大量数据，测完自动清理本地和云端测试文件
 #
 # 用法：bash scripts/db_backup/db_cloud_test.sh
-# ══════════════════════════════════════════════════════════════�?
+# ═══════════════════════════════════════════════════════════════
+
 set -euo pipefail
 
 export TZ='Asia/Shanghai'
@@ -13,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "${PROJECT_ROOT}"
 
-# ─── 配置�?───
+# ─── 配置区 ───
 CONTAINER="audiobook_postgres"
 PG_USER="audiobook_app"
 PG_DB="audiobook"
@@ -21,11 +25,12 @@ RCLONE_GDRIVE="gdrive"
 RCLONE_MEGA="mega"
 RCLONE_DEST_DIR="audiobook_backup"
 TEST_DIR="/tmp/audiobook_cloud_test"
-# ══════════════════════════════════════════════════════════════�?
-echo "══════════════════════════════════════════════════�?
-echo "  云盘备份连通性测�?
+# ═══════════════════════════════════════════════════════════════
+
+echo "═══════════════════════════════════════════════════"
+echo "  云盘备份连通性测试"
 echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "══════════════════════════════════════════════════�?
+echo "═══════════════════════════════════════════════════"
 echo ""
 
 PASS=0
@@ -34,10 +39,10 @@ FAIL=0
 # ─── 1. 测试 Docker 容器 ───
 echo "[1/5] 测试容器连接..."
 if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
-    echo "  �?容器运行�?
+    echo "  ✅ 容器运行中"
     PASS=$((PASS + 1))
 else
-    echo "  �?容器 ${CONTAINER} 未运�?
+    echo "  ❌ 容器 ${CONTAINER} 未运行"
     FAIL=$((FAIL + 1))
 fi
 
@@ -49,14 +54,14 @@ if docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" \
     --schema-only --no-owner --no-privileges | gzip > "${TEST_DIR}/test_backup.sql.gz"; then
     if [ -s "${TEST_DIR}/test_backup.sql.gz" ]; then
         TEST_SIZE=$(du -h "${TEST_DIR}/test_backup.sql.gz" | awk '{print $1}')
-        echo "  �?备份成功 (${TEST_SIZE})"
+        echo "  ✅ 备份成功 (${TEST_SIZE})"
         PASS=$((PASS + 1))
     else
-        echo "  �?备份文件为空"
+        echo "  ❌ 备份文件为空"
         FAIL=$((FAIL + 1))
     fi
 else
-    echo "  �?备份失败"
+    echo "  ❌ 备份失败"
     FAIL=$((FAIL + 1))
 fi
 
@@ -64,19 +69,19 @@ fi
 echo ""
 echo "[3/5] 测试 Google Drive 上传..."
 if ! command -v rclone >/dev/null 2>&1; then
-    echo "  �?rclone 未安�?
+    echo "  ❌ rclone 未安装"
     FAIL=$((FAIL + 1))
 elif ! rclone listremotes 2>/dev/null | grep -q "^${RCLONE_GDRIVE}:$"; then
-    echo "  �?rclone 远程 '${RCLONE_GDRIVE}' 未配�?
+    echo "  ❌ rclone 远程 '${RCLONE_GDRIVE}' 未配置"
     FAIL=$((FAIL + 1))
 else
     if rclone copy "${TEST_DIR}/test_backup.sql.gz" "${RCLONE_GDRIVE}:${RCLONE_DEST_DIR}/" \
         --log-level ERROR 2>&1; then
-        echo "  �?上传成功"
+        echo "  ✅ 上传成功"
         # 验证文件存在
         if rclone ls "${RCLONE_GDRIVE}:${RCLONE_DEST_DIR}/test_backup.sql.gz" \
             --log-level ERROR 2>/dev/null | grep -q "test_backup"; then
-            echo "  �?文件验证存在"
+            echo "  ✅ 文件验证存在"
             PASS=$((PASS + 1))
         else
             echo "  ⚠️  上传成功但验证失败（可能需要时间同步）"
@@ -85,9 +90,9 @@ else
         # 清理云端测试文件
         rclone deletefile "${RCLONE_GDRIVE}:${RCLONE_DEST_DIR}/test_backup.sql.gz" \
             --log-level ERROR 2>/dev/null || true
-        echo "  🗑�? 云端测试文件已清�?
+        echo "  🗑️  云端测试文件已清理"
     else
-        echo "  �?上传失败，检�?rclone config"
+        echo "  ❌ 上传失败，检查 rclone config"
         FAIL=$((FAIL + 1))
     fi
 fi
@@ -96,18 +101,18 @@ fi
 echo ""
 echo "[4/5] 测试 Mega 上传..."
 if ! command -v rclone >/dev/null 2>&1; then
-    echo "  �?rclone 未安�?
+    echo "  ❌ rclone 未安装"
     FAIL=$((FAIL + 1))
 elif ! rclone listremotes 2>/dev/null | grep -q "^${RCLONE_MEGA}:$"; then
-    echo "  �?rclone 远程 '${RCLONE_MEGA}' 未配�?
+    echo "  ❌ rclone 远程 '${RCLONE_MEGA}' 未配置"
     FAIL=$((FAIL + 1))
 else
     if rclone copy "${TEST_DIR}/test_backup.sql.gz" "${RCLONE_MEGA}:${RCLONE_DEST_DIR}/" \
         --log-level ERROR 2>&1; then
-        echo "  �?上传成功"
+        echo "  ✅ 上传成功"
         if rclone ls "${RCLONE_MEGA}:${RCLONE_DEST_DIR}/test_backup.sql.gz" \
             --log-level ERROR 2>/dev/null | grep -q "test_backup"; then
-            echo "  �?文件验证存在"
+            echo "  ✅ 文件验证存在"
             PASS=$((PASS + 1))
         else
             echo "  ⚠️  上传成功但验证失败（可能需要时间同步）"
@@ -116,9 +121,9 @@ else
         # 清理云端测试文件
         rclone deletefile "${RCLONE_MEGA}:${RCLONE_DEST_DIR}/test_backup.sql.gz" \
             --log-level ERROR 2>/dev/null || true
-        echo "  🗑�? 云端测试文件已清�?
+        echo "  🗑️  云端测试文件已清理"
     else
-        echo "  �?上传失败，检�?rclone config"
+        echo "  ❌ 上传失败，检查 rclone config"
         FAIL=$((FAIL + 1))
     fi
 fi
@@ -127,13 +132,13 @@ fi
 echo ""
 echo "[5/5] 清理本地测试文件..."
 rm -rf "$TEST_DIR"
-echo "  �?本地测试文件已清�?
+echo "  ✅ 本地测试文件已清理"
 
 # ─── 结果 ───
 echo ""
-echo "══════════════════════════════════════════════════�?
-echo "  测试结果: �?${PASS} 通过  �?${FAIL} 失败"
-echo "══════════════════════════════════════════════════�?
+echo "═══════════════════════════════════════════════════"
+echo "  测试结果: ✅ ${PASS} 通过  ❌ ${FAIL} 失败"
+echo "═══════════════════════════════════════════════════"
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "  全部通过！可以放心使用定时备份："
@@ -144,11 +149,11 @@ if [ "$FAIL" -eq 0 ]; then
     echo ""
     echo "    17 3 * * * cd /root/audiobook && bash scripts/db_backup/db_backup_cloud.sh >> backups/cron.log 2>&1"
 else
-    echo "  有失败项，请先解决后再运行正式备份�?
+    echo "  有失败项，请先解决后再运行正式备份。"
     echo ""
-    echo "  常见问题�?
-    echo "    - rclone 未安�? curl https://rclone.org/install.sh | bash"
-    echo "    - 远程未配�? rclone config"
-    echo "    - 容器未运�? docker-compose up -d"
+    echo "  常见问题："
+    echo "    - rclone 未安装: curl https://rclone.org/install.sh | bash"
+    echo "    - 远程未配置: rclone config"
+    echo "    - 容器未运行: docker-compose up -d"
 fi
 echo ""

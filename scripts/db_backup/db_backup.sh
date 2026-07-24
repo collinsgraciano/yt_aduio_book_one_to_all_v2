@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# ══════════════════════════════════════════════════════════════�?# 数据库备份脚�?�?全库备份到压�?SQL 文件
-# ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/db_backup/db_backup.sh                    # 备份到默认目�?./backups/
-#   bash scripts/db_backup/db_backup.sh /path/to/backupdir  # 备份到指定目�?#   bash scripts/db_backup/db_backup.sh /path/to/file.sql.gz  # 备份到指定文�?# ══════════════════════════════════════════════════════════════�?
+# ═══════════════════════════════════════════════════════════════
+# 数据库备份脚本 — 全库备份到压缩 SQL 文件
+# ═══════════════════════════════════════════════════════════════
+# 用法：
+#   bash scripts/db_backup/db_backup.sh                    # 备份到默认目录 ./backups/
+#   bash scripts/db_backup/db_backup.sh /path/to/backupdir  # 备份到指定目录
+#   bash scripts/db_backup/db_backup.sh /path/to/file.sql.gz  # 备份到指定文件
+# ═══════════════════════════════════════════════════════════════
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,21 +36,21 @@ fi
 BACKUP_DIR=$(dirname "$BACKUP_FILE")
 mkdir -p "$BACKUP_DIR"
 
-echo "══════════════════════════════════════════════════�?
-echo "  数据库备�?
+echo "═══════════════════════════════════════════════════"
+echo "  数据库备份"
 echo "  容器: ${CONTAINER}"
-echo "  数据�? ${PG_DB}"
+echo "  数据库: ${PG_DB}"
 echo "  备份文件: ${BACKUP_FILE}"
-echo "══════════════════════════════════════════════════�?
+echo "═══════════════════════════════════════════════════"
 
-# ─── 检查容器是否运�?───
+# ─── 检查容器是否运行 ───
 if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
-    echo "  [x] 容器 ${CONTAINER} 未运�?
+    echo "  [x] 容器 ${CONTAINER} 未运行"
     exit 1
 fi
 
 # ─── 执行备份 ───
-echo "[1/2] 导出数据�?.."
+echo "[1/2] 导出数据库..."
 if ! docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" --no-owner --no-privileges | gzip > "$BACKUP_FILE"; then
     rm -f "$BACKUP_FILE"
     echo "  [x] 备份失败，已删除不完整的备份文件"
@@ -52,11 +58,11 @@ if ! docker exec "$CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" --no-owner --no-
 fi
 
 FILE_SIZE=$(du -h "$BACKUP_FILE" | awk '{print $1}')
-echo "  �?备份完成: ${FILE_SIZE}"
+echo "  ✓ 备份完成: ${FILE_SIZE}"
 
-# ─── 显示表统�?───
+# ─── 显示表统计 ───
 echo ""
-echo "[2/2] 表统�?"
+echo "[2/2] 表统计:"
 docker exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -t -c "
 SELECT schemaname||'.'||relname AS table_name, n_live_tup AS row_count
 FROM pg_stat_user_tables
@@ -66,17 +72,17 @@ ORDER BY n_live_tup DESC;
 done
 
 echo ""
-echo "══════════════════════════════════════════════════�?
+echo "═══════════════════════════════════════════════════"
 echo "  备份完成: ${BACKUP_FILE} (${FILE_SIZE})"
 echo "  恢复命令: bash scripts/db_backup/db_restore.sh ${BACKUP_FILE}"
-echo "══════════════════════════════════════════════════�?
+echo "═══════════════════════════════════════════════════"
 
-# ─── 清理旧备份（保留最�?7 个）───
+# ─── 清理旧备份（保留最近 7 个）───
 BACKUP_COUNT=$(ls -1 "${BACKUP_DIR}"/audiobook_backup_*.sql.gz 2>/dev/null | wc -l)
 if [ "$BACKUP_COUNT" -gt 7 ]; then
-    echo "  清理旧备份（保留最�?7 个）..."
+    echo "  清理旧备份（保留最近 7 个）..."
     ls -1t "${BACKUP_DIR}"/audiobook_backup_*.sql.gz | tail -n +8 | while read -r old_file; do
         rm -f "$old_file"
-        echo "  已删�? $(basename "$old_file")"
+        echo "  已删除: $(basename "$old_file")"
     done
 fi
