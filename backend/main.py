@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
         db_execute(pg_sql.SQL("ALTER TABLE public.audiobook_chapters ADD COLUMN IF NOT EXISTS error_message text"))
         # 5. channels 表补充 proxy 列
         db_execute(pg_sql.SQL("ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS proxy text"))
+        db_execute(pg_sql.SQL("ALTER TABLE public.channels ADD COLUMN IF NOT EXISTS group_name text NOT NULL DEFAULT ''"))
         # 6. 补充索引
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_audiobook_chapters_book_id ON public.audiobook_chapters(book_id)"))
         db_execute(pg_sql.SQL("CREATE INDEX IF NOT EXISTS idx_audiobook_chapters_upload_status ON public.audiobook_chapters(upload_status)"))

@@ -57,6 +57,7 @@ def create_channel(body: ChannelCreate):
         channel = channel_service.create_channel(
             body.channel_name, body.display_name or "",
             body.description or "", body.oauth_client_secret, body.proxy or "",
+            body.group_name or "",
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -69,6 +70,7 @@ def update_channel(channel_name: str, body: ChannelUpdate):
     try:
         count = channel_service.update_channel(
             channel_name, body.display_name, body.description, body.is_active, body.proxy,
+            body.group_name,
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))

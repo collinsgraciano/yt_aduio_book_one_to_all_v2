@@ -16,6 +16,7 @@ class ChannelBase(BaseModel):
 
 class ChannelCreate(ChannelBase):
     oauth_client_secret: Optional[dict] = Field(None, description="Google Cloud OAuth client_secret.json 内容")
+    group_name: Optional[str] = Field("", description="频道分组名称")
 
 
 class ChannelUpdate(BaseModel):
@@ -23,6 +24,7 @@ class ChannelUpdate(BaseModel):
     description: Optional[str] = None
     proxy: Optional[str] = None
     is_active: Optional[bool] = None
+    group_name: Optional[str] = None
 
 
 class ChannelResponse(ChannelBase):

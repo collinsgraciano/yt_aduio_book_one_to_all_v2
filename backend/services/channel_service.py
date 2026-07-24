@@ -60,7 +60,7 @@ def list_channels() -> list[dict]:
             SELECT
                 c.channel_id, c.channel_name, c.display_name, c.description,
                 c.is_active, c.oauth_status, c.last_auth_at,
-                c.created_at, c.updated_at,
+                c.created_at, c.updated_at, c.group_name,
                 CASE WHEN yc.channel_name IS NOT NULL THEN true ELSE false END AS has_credentials,
                 COALESCE(cc.config_version, 1) AS config_version,
                 (SELECT COUNT(*) FROM public.run_tasks rt WHERE rt.channel_name = c.channel_name
@@ -102,7 +102,7 @@ def _check_proxy_used_by(proxy: str, exclude_channel: str) -> str | None:
 
 
 def create_channel(channel_name: str, display_name: str = "", description: str = "",
-                   oauth_client_secret: dict = None, proxy: str = "") -> dict:
+                   oauth_client_secret: dict = None, proxy: str = "", group_name: str = "") -> dict:
     """新增频道。"""
     if proxy:
         proxy = proxy.strip()
@@ -112,13 +112,13 @@ def create_channel(channel_name: str, display_name: str = "", description: str =
 
     row = fetch_one(
         sql.SQL("""
-            INSERT INTO public.channels (channel_name, display_name, description, oauth_client_secret, proxy)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO public.channels (channel_name, display_name, description, oauth_client_secret, proxy, group_name)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *
         """),
         (channel_name, display_name or channel_name, description,
          Jsonb(oauth_client_secret) if oauth_client_secret else None,
-         proxy or None),
+         proxy or None, group_name or ""),
     )
 
     # 创建默认配置（只保留频道级 Key，剔除全局 Key 防止覆盖全局设置）
@@ -150,7 +150,7 @@ def create_channel(channel_name: str, display_name: str = "", description: str =
 
 
 def update_channel(channel_name: str, display_name: str = None, description: str = None,
-                   is_active: bool = None, proxy: str = None) -> int:
+                   is_active: bool = None, proxy: str = None, group_name: str = None) -> int:
     """更新频道信息。proxy 传 None 表示不更新，传 "" 表示清除代理。"""
     updates = {}
     if display_name is not None:
@@ -166,6 +166,8 @@ def update_channel(channel_name: str, display_name: str = None, description: str
             if existing:
                 raise ValueError(f"代理已被频道「{existing}」使用，不允许重复")
         updates["proxy"] = proxy_val or None
+    if group_name is not None:
+        updates["group_name"] = group_name
 
     if not updates:
         return 0

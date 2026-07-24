@@ -5,18 +5,19 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3><i class="bi bi-youtube"></i> 频道管理</h3>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal"><i class="bi bi-plus-lg"></i> 新增频道</button>
-    <button class="btn btn-outline-info" onclick="loadDefaults()"><i class="bi bi-gear"></i> 新增频道默认配置</button>
-</div>
-
-<div class="card p-3">
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead><tr><th>频道名</th><th>显示名</th><th>OAuth</th><th>凭证</th><th>成功数</th><th>创建时间</th><th>操作</th></tr></thead>
-            <tbody id="channels-tbody"></tbody>
-        </table>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal"><i class="bi bi-plus-lg"></i> 新增频道</button>
+        <button class="btn btn-outline-info" onclick="loadDefaults()"><i class="bi bi-gear"></i> 默认配置</button>
     </div>
 </div>
+
+<div class="mb-3 d-flex align-items-center gap-2">
+    <select class="form-select form-select-sm" id="group-filter" style="width:auto;" onchange="renderChannels()">
+        <option value="">全部分组</option>
+    </select>
+</div>
+
+<div id="channels-container"></div>
 
 <!-- 新增频道 Modal -->
 <div class="modal fade" id="addModal" tabindex="-1">
@@ -26,6 +27,7 @@
             <div class="modal-body">
                 <div class="mb-3"><label class="form-label">频道名（唯一标识）</label><input class="form-control" id="ch-name" placeholder="如: my_channel"></div>
                 <div class="mb-3"><label class="form-label">显示名</label><input class="form-control" id="ch-display" placeholder="可选"></div>
+                <div class="mb-3"><label class="form-label">分组</label><input class="form-control" id="ch-group" placeholder="可选，如: A组" list="group-list"><datalist id="group-list"></datalist></div>
                 <div class="mb-3"><label class="form-label">描述</label><textarea class="form-control" id="ch-desc" rows="2"></textarea></div>
                 <div class="mb-3"><label class="form-label">代理地址</label><div class="input-group"><input class="form-control" id="ch-proxy" placeholder="如: socks5://127.0.0.1:1080（留空则直连）"><button class="btn btn-outline-info" type="button" onclick="testProxyNew()">测试</button></div><div class="form-text">该频道的所有网络操作（OAuth授权、Token刷新、YouTube上传等）都将通过此代理 <span id="new-proxy-test-result"></span></div></div>
                 <div class="mb-3"><label class="form-label">OAuth client_secret.json</label><input class="form-control" type="file" id="ch-secret" accept=".json"></div>
@@ -34,6 +36,7 @@
         </div>
     </div>
 </div>
+
 <!-- 新增频道默认配置 Modal -->
 <div class="modal fade" id="defaultsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -48,35 +51,117 @@
     </div>
 </div>
 
+<!-- 修改分组 Modal -->
+<div class="modal fade" id="groupModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">修改分组</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><label class="form-label small">频道</label><div><code id="group-modal-ch"></code></div></div>
+                <div class="mb-3"><label class="form-label">分组</label><input class="form-control" id="group-modal-input" placeholder="留空则无分组" list="group-list"></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" onclick="saveGroup()">保存</button></div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+let _allChannels = [];
+
 async function loadChannels() {
     try {
         const data = await api('/api/channels');
-        const tbody = document.getElementById('channels-tbody');
-        tbody.innerHTML = (data.channels || []).map(ch => `
-            <tr>
-                <td><code>${ch.channel_name}</code></td>
-                <td>${ch.display_name || '-'}</td>
-                <td>${ch.oauth_status === 'authorized' ? '<span class="badge bg-success">已授权</span>' : '<span class="badge bg-secondary">未授权</span>'}</td>
-                <td>${ch.has_credentials ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>'}</td>
-                <td>${ch.total_videos || 0}</td>
-                <td>${fmtTime(ch.created_at)}</td>
-                <td>
-                    <a href="/channels/${encodeURIComponent(ch.channel_name)}" class="btn btn-sm btn-outline-primary">详情</a>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteChannel('${ch.channel_name}')">删除</button>
-                </td>
-            </tr>
-        `).join('') || '<tr><td colspan="7" class="text-center text-muted">暂无频道</td></tr>';
+        _allChannels = data.channels || [];
+        updateGroupFilter();
+        renderChannels();
     } catch (e) { showToast('加载失败: ' + e.message, 'danger'); }
+}
+
+function updateGroupFilter() {
+    const groups = [...new Set(_allChannels.map(ch => ch.group_name || '').filter(g => g))];
+    const sel = document.getElementById('group-filter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">全部分组</option>' + groups.map(g => `<option value="${g}" ${g === cur ? 'selected' : ''}>${g}</option>`).join('');
+    const dl = document.getElementById('group-list');
+    dl.innerHTML = groups.map(g => `<option value="${g}">`).join('');
+}
+
+function renderChannels() {
+    const filter = document.getElementById('group-filter').value;
+    let channels = _allChannels;
+    if (filter) channels = channels.filter(ch => (ch.group_name || '') === filter);
+
+    // 按分组组织
+    const grouped = {};
+    const ungrouped = [];
+    for (const ch of channels) {
+        const g = ch.group_name || '';
+        if (g) { (grouped[g] = grouped[g] || []).push(ch); }
+        else { ungrouped.push(ch); }
+    }
+
+    const container = document.getElementById('channels-container');
+    let html = '';
+
+    // 有分组的频道
+    for (const [group, chs] of Object.entries(grouped)) {
+        html += renderGroupCard(group, chs);
+    }
+    // 无分组的频道
+    if (ungrouped.length) {
+        html += renderGroupCard('', ungrouped);
+    }
+    if (!channels.length) {
+        html = '<div class="text-center text-muted py-4">暂无频道</div>';
+    }
+    container.innerHTML = html;
+}
+
+function renderGroupCard(group, channels) {
+    const title = group || '未分组';
+    const icon = group ? '<i class="bi bi-folder"></i>' : '<i class="bi bi-folder2-open"></i>';
+    const badge = `<span class="badge bg-secondary">${channels.length}</span>`;
+    return `
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#grp-${group || 'none'}">
+            <span>${icon} ${title} ${badge}</span>
+            <i class="bi bi-chevron-down"></i>
+        </div>
+        <div class="collapse show" id="grp-${group || 'none'}">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead><tr><th>频道名</th><th>显示名</th><th>OAuth</th><th>凭证</th><th>成功数</th><th>创建时间</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${channels.map(ch => `
+                            <tr>
+                                <td><code>${ch.channel_name}</code>${ch.group_name ? ` <span class="badge bg-info">${ch.group_name}</span>` : ''}</td>
+                                <td>${ch.display_name || '-'}</td>
+                                <td>${ch.oauth_status === 'authorized' ? '<span class="badge bg-success">已授权</span>' : '<span class="badge bg-secondary">未授权</span>'}</td>
+                                <td>${ch.has_credentials ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>'}</td>
+                                <td>${ch.total_videos || 0}</td>
+                                <td>${fmtTime(ch.created_at)}</td>
+                                <td>
+                                    <a href="/channels/${encodeURIComponent(ch.channel_name)}" class="btn btn-sm btn-outline-primary">详情</a>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="editGroup('${ch.channel_name}')"><i class="bi bi-folder"></i></button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteChannel('${ch.channel_name}')">删除</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>`;
 }
 
 async function createChannel() {
     const name = document.getElementById('ch-name').value.trim();
     if (!name) { showToast('请输入频道名', 'warning'); return; }
     const display = document.getElementById('ch-display').value.trim();
+    const group = document.getElementById('ch-group').value.trim();
     const desc = document.getElementById('ch-desc').value.trim();
     const proxy = document.getElementById('ch-proxy').value.trim();
     const fileInput = document.getElementById('ch-secret');
@@ -86,7 +171,7 @@ async function createChannel() {
     }
     try {
         await api('/api/channels', { method: 'POST', body: JSON.stringify({
-            channel_name: name, display_name: display, description: desc, proxy: proxy, oauth_client_secret: secret,
+            channel_name: name, display_name: display, description: desc, proxy: proxy, oauth_client_secret: secret, group_name: group,
         })});
         showToast('频道创建成功');
         bootstrap.Modal.getInstance(document.getElementById('addModal')).hide();
@@ -101,6 +186,24 @@ async function deleteChannel(name) {
         showToast('频道已删除');
         loadChannels();
     } catch (e) { showToast('删除失败: ' + e.message, 'danger'); }
+}
+
+function editGroup(channelName) {
+    const ch = _allChannels.find(c => c.channel_name === channelName);
+    document.getElementById('group-modal-ch').textContent = channelName;
+    document.getElementById('group-modal-input').value = (ch && ch.group_name) || '';
+    new bootstrap.Modal(document.getElementById('groupModal')).show();
+}
+
+async function saveGroup() {
+    const channelName = document.getElementById('group-modal-ch').textContent;
+    const group = document.getElementById('group-modal-input').value.trim();
+    try {
+        await api(`/api/channels/${encodeURIComponent(channelName)}`, { method: 'PUT', body: JSON.stringify({ group_name: group }) });
+        showToast('分组已更新');
+        bootstrap.Modal.getInstance(document.getElementById('groupModal')).hide();
+        loadChannels();
+    } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
 }
 
 async function testProxyNew() {
