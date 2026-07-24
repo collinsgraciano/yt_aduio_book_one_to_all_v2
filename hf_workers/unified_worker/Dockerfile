@@ -38,8 +38,7 @@ RUN apt-get update -o Acquire::Retries=5 -o Acquire::Timeout=30 \
 
 WORKDIR /app
 
-# ─── 从 GitHub 拉取全部代码（pipeline + Worker 应用）───
-# 一次下载，提取 pipeline/ 和 unified_worker/ 下的所有文件
+# ─── 从 GitHub 拉取全部代码（构建时，作为启动时拉取失败的后备）───
 RUN wget -q -O /tmp/repo.tar.gz \
         "https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2/archive/refs/heads/main.tar.gz" \
     && tar -xzf /tmp/repo.tar.gz -C /tmp/ \
@@ -52,6 +51,32 @@ RUN wget -q -O /tmp/repo.tar.gz \
 
 # ─── Python 依赖 ───
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# ─── 启动脚本：每次容器启动时从 GitHub 拉取最新代码 ───
+# 这样"重新部署"只需让容器退出(os._exit(1))，HF Space 自动重启，
+# 启动脚本会拉取最新代码覆盖镜像中的旧版本，无需 HF_TOKEN。
+RUN cat > /app/start.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+echo "[启动] 从 GitHub 拉取最新代码..."
+if wget -q -O /tmp/repo.tar.gz \
+    "https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2/archive/refs/heads/main.tar.gz"; then
+    tar -xzf /tmp/repo.tar.gz -C /tmp/
+    cp -r /tmp/yt_aduio_book_one_to_all_v2-main/pipeline/* /app/pipeline/
+    cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/app.py        /app/app.py
+    cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/runner.py     /app/runner.py
+    cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/shared.py     /app/shared.py
+    cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/requirements.txt /tmp/requirements.txt
+    rm -rf /tmp/repo.tar.gz /tmp/yt_aduio_book_one_to_all_v2-main
+    pip install --no-cache-dir -q -r /tmp/requirements.txt 2>&1 | tail -1
+    echo "[启动] 代码更新完成"
+else
+    echo "[启动] ⚠️ GitHub 拉取失败，使用镜像内置代码"
+    rm -f /tmp/repo.tar.gz
+fi
+exec python app.py
+SCRIPT
+RUN chmod +x /app/start.sh
 
 # ─── DeepFilter 二进制 ───
 # TG 缓存模式默认 ENABLE_DEEPFILTER=False，但作为断点续跑兜底。
@@ -82,4 +107,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=30s \
     CMD curl -f http://localhost:7860/health || exit 1
 
-CMD ["python", "app.py"]
+CMD ["/app/start.sh"]
