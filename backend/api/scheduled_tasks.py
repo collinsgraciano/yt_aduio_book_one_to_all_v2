@@ -126,6 +126,13 @@ def update_scheduled_task(schedule_id: int, body: UpdateScheduledTaskRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.delete("/all")
+def delete_all_scheduled_tasks():
+    """删除所有定时任务。"""
+    result = scheduler_service.delete_all_scheduled_tasks()
+    return {"ok": True, "deleted": result["deleted"]}
+
+
 @router.delete("/{schedule_id}")
 def delete_scheduled_task(schedule_id: int):
     """删除定时任务。"""
@@ -142,13 +149,6 @@ def batch_delete_scheduled_tasks(body: BatchDeleteScheduledTaskRequest):
         raise HTTPException(status_code=400, detail="请提供要删除的定时任务 ID 列表")
     result = scheduler_service.delete_scheduled_tasks(body.schedule_ids)
     return {"ok": True, "deleted": result["deleted"], "total": result["total"]}
-
-
-@router.delete("/all")
-def delete_all_scheduled_tasks():
-    """删除所有定时任务。"""
-    result = scheduler_service.delete_all_scheduled_tasks()
-    return {"ok": True, "deleted": result["deleted"]}
 
 
 @router.post("/{schedule_id}/toggle")
