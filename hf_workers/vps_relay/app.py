@@ -1705,10 +1705,12 @@ def api_seed_jobs():
         )
         books = filtered
 
-    # MAX_PROCESS_COUNT 限制投递数量
+    # MAX_PROCESS_COUNT 限制投递数量（随机选取，避免每次都投递同一批书）
     if max_process_count > 0 and len(books) > max_process_count:
+        import random
+        random.shuffle(books)
         logger.info(
-            "[投递] MAX_PROCESS_COUNT 限制：%d → %d 本", len(books), max_process_count,
+            "[投递] MAX_PROCESS_COUNT 限制：%d → %d 本（随机选取）", len(books), max_process_count,
         )
         books = books[:max_process_count]
 

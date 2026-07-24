@@ -171,9 +171,11 @@ def seed_jobs_direct(body: SeedJobsRequest):
         logger.info("[HF外包] PROJECT_FLAG 过滤：%d → %d 本", len(books), len(filtered))
         books = filtered
 
-    # MAX_PROCESS_COUNT 限制
+    # MAX_PROCESS_COUNT 限制（随机选取，避免每次都投递同一批书）
     if max_process_count > 0 and len(books) > max_process_count:
-        logger.info("[HF外包] MAX_PROCESS_COUNT 限制：%d → %d 本", len(books), max_process_count)
+        import random
+        random.shuffle(books)
+        logger.info("[HF外包] MAX_PROCESS_COUNT 限制：%d → %d 本（随机选取）", len(books), max_process_count)
         books = books[:max_process_count]
 
     inserted = 0
