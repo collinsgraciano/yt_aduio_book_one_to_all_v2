@@ -1650,19 +1650,31 @@ def api_seed_jobs():
     # 读取频道级配置（TARGET_CATEGORY, PROJECT_FLAG, MAX_PROCESS_COUNT）
     ch_config = _fetch_channel_config(channel)
 
-    # category：请求体优先，否则用频道配置的 TARGET_CATEGORY
-    category = req_category or ch_config.get("TARGET_CATEGORY", "") or ""
+    # category：请求体优先，否则用 config_overrides 中的 TARGET_CATEGORY，最后用频道配置
+    override_category = ""
+    if config_overrides and isinstance(config_overrides, dict):
+        override_category = str(config_overrides.get("TARGET_CATEGORY", "") or "").strip()
+    category = req_category or override_category or ch_config.get("TARGET_CATEGORY", "") or ""
 
-    # PROJECT_FLAG：频道配置优先，空时回退为频道名（与本机 pipeline 一致）
-    project_flag = str(ch_config.get("PROJECT_FLAG", "") or "").strip()
+    # PROJECT_FLAG：config_overrides 优先，频道配置次之，空时回退为频道名
+    if config_overrides and isinstance(config_overrides, dict) and config_overrides.get("PROJECT_FLAG"):
+        project_flag = str(config_overrides["PROJECT_FLAG"] or "").strip()
+    else:
+        project_flag = str(ch_config.get("PROJECT_FLAG", "") or "").strip()
     if not project_flag:
         project_flag = channel
 
-    # MAX_PROCESS_COUNT：限制本次投递数量（0=不限制）
-    try:
-        max_process_count = int(ch_config.get("MAX_PROCESS_COUNT", 0) or 0)
-    except (ValueError, TypeError):
-        max_process_count = 0
+    # MAX_PROCESS_COUNT：config_overrides 优先，频道配置次之
+    if config_overrides and isinstance(config_overrides, dict) and config_overrides.get("MAX_PROCESS_COUNT") is not None:
+        try:
+            max_process_count = int(config_overrides["MAX_PROCESS_COUNT"] or 0)
+        except (ValueError, TypeError):
+            max_process_count = 0
+    else:
+        try:
+            max_process_count = int(ch_config.get("MAX_PROCESS_COUNT", 0) or 0)
+        except (ValueError, TypeError):
+            max_process_count = 0
 
     # 读取运行时配置
     force_reprocess = bool(_cfg("pipeline_force_reprocess", False))

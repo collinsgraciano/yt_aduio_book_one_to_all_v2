@@ -99,19 +99,31 @@ def seed_jobs_direct(body: SeedJobsRequest):
         if isinstance(cfg_json, dict):
             ch_config = cfg_json
 
-    # category：请求体优先，否则用频道配置的 TARGET_CATEGORY
-    category = body.category or ch_config.get("TARGET_CATEGORY", "") or ""
+    # category：请求体优先，否则用 config_overrides 中的 TARGET_CATEGORY，最后用频道配置
+    override_category = ""
+    if body.config_overrides:
+        override_category = str(body.config_overrides.get("TARGET_CATEGORY", "") or "").strip()
+    category = body.category or override_category or ch_config.get("TARGET_CATEGORY", "") or ""
 
-    # PROJECT_FLAG：频道配置优先，空时回退为频道名
-    project_flag = str(ch_config.get("PROJECT_FLAG", "") or "").strip()
+    # PROJECT_FLAG：config_overrides 优先，频道配置次之，空时回退为频道名
+    if body.config_overrides and body.config_overrides.get("PROJECT_FLAG"):
+        project_flag = str(body.config_overrides["PROJECT_FLAG"] or "").strip()
+    else:
+        project_flag = str(ch_config.get("PROJECT_FLAG", "") or "").strip()
     if not project_flag:
         project_flag = channel
 
-    # MAX_PROCESS_COUNT
-    try:
-        max_process_count = int(ch_config.get("MAX_PROCESS_COUNT", 0) or 0)
-    except (ValueError, TypeError):
-        max_process_count = 0
+    # MAX_PROCESS_COUNT：config_overrides 优先，频道配置次之
+    if body.config_overrides and body.config_overrides.get("MAX_PROCESS_COUNT") is not None:
+        try:
+            max_process_count = int(body.config_overrides["MAX_PROCESS_COUNT"] or 0)
+        except (ValueError, TypeError):
+            max_process_count = 0
+    else:
+        try:
+            max_process_count = int(ch_config.get("MAX_PROCESS_COUNT", 0) or 0)
+        except (ValueError, TypeError):
+            max_process_count = 0
 
     # 读取全局配置中的 FORCE_REPROCESS
     from ..services.config_service import get_global_setting
