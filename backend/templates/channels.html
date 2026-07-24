@@ -150,6 +150,8 @@ function renderDefaultsEditor(defaults, schema) {
                 input = `<select class="form-select form-select-sm" data-key="${item.key}">${opts}</select>`;
             } else if (item.type === 'int' || item.type === 'float') {
                 input = `<input type="number" class="form-control form-control-sm" data-key="${item.key}" value="${val}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.type === 'float' ? 'step="0.1"' : ''}>`;
+            } else if (item.key === 'TARGET_CATEGORY') {
+                input = `<div class="input-group"><input type="text" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}"><button class="btn btn-sm btn-outline-info" type="button" onclick="toggleDefaultsCategoryList(this)">选择</button></div><div class="category-list mt-1" style="display:none;"></div>`;
             } else {
                 input = `<input type="text" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}">`;
             }
@@ -174,6 +176,41 @@ async function saveDefaults() {
         showToast('默认配置已保存');
         bootstrap.Modal.getInstance(document.getElementById('defaultsModal')).hide();
     } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
+}
+
+let _defaultsCategoriesLoaded = false;
+let _defaultsCategoriesCache = [];
+
+async function toggleDefaultsCategoryList(btn) {
+    const wrapper = btn.closest('.col-md-6');
+    const listEl = wrapper.querySelector('.category-list');
+    const inputEl = wrapper.querySelector('[data-key="TARGET_CATEGORY"]');
+    if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
+    if (!_defaultsCategoriesLoaded) {
+        try {
+            const res = await api('/api/books/categories');
+            _defaultsCategoriesCache = (res.categories || []).map(c => c.category);
+            _defaultsCategoriesLoaded = true;
+        } catch (e) { showToast('加载分类失败: ' + e.message, 'danger'); return; }
+    }
+    const current = (inputEl.value || '').trim();
+    let html = '<div class="d-flex flex-wrap gap-1">';
+    html += `<button class="btn btn-sm btn-outline-secondary" onclick="pickDefaultsCategory(this,'')">全部（留空）</button>`;
+    for (const cat of _defaultsCategoriesCache) {
+        const active = cat === current ? ' active' : '';
+        html += `<button class="btn btn-sm btn-outline-primary${active}" onclick="pickDefaultsCategory(this,'${cat.replace(/'/g, "\\'")}')">${cat}</button>`;
+    }
+    html += '</div>';
+    listEl.innerHTML = html;
+    listEl.style.display = 'block';
+}
+
+function pickDefaultsCategory(btn, category) {
+    const wrapper = btn.closest('.col-md-6');
+    wrapper.querySelector('[data-key="TARGET_CATEGORY"]').value = category;
+    wrapper.querySelectorAll('.category-list .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wrapper.querySelector('.category-list').style.display = 'none';
 }
 
 loadChannels();
