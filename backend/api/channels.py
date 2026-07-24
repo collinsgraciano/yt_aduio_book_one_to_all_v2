@@ -24,6 +24,20 @@ def list_channels():
     return {"channels": channels, "total": len(channels)}
 
 
+@router.get("/defaults")
+def get_new_channel_defaults():
+    """获取新增频道默认配置。"""
+    defaults = channel_service.get_new_channel_defaults()
+    return {"defaults": defaults}
+
+
+@router.put("/defaults")
+def save_new_channel_defaults(body: dict):
+    """保存新增频道默认配置。"""
+    result = channel_service.save_new_channel_defaults(body)
+    return {"message": "默认配置已保存", **result}
+
+
 @router.get("/{channel_name}")
 def get_channel(channel_name: str):
     """获取单个频道详情。"""

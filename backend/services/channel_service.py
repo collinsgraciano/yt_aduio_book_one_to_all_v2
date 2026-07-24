@@ -12,6 +12,47 @@ from ..database import fetch_one, fetch_all, execute, table_identifier
 from ..config_schema import DEFAULT_CONFIG, coerce_value, CONFIG_SCHEMA
 
 
+# 新增频道时跳过用户自定义默认值的 Key（自动设置或另有管理入口）
+_AUTO_SET_KEYS = frozenset({"YOUTUBE_CHANNEL_NAME", "PROJECT_FLAG", "YOUTUBE_UPLOAD_PROXIES"})
+
+
+def get_new_channel_defaults() -> dict:
+    """从 global_settings 读取新增频道默认配置。"""
+    row = fetch_one(
+        sql.SQL("SELECT setting_value FROM public.global_settings WHERE setting_key = 'NEW_CHANNEL_DEFAULTS'"),
+    )
+    if not row or not row.get("setting_value"):
+        return {}
+    try:
+        val = row["setting_value"]
+        if isinstance(val, str):
+            val = json.loads(val)
+        return val if isinstance(val, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def save_new_channel_defaults(defaults: dict) -> dict:
+    """保存新增频道默认配置到 global_settings。"""
+    from ..config_schema import CHANNEL_SPECIFIC_KEYS
+    # 只保留频道级 Key，排除自动设置的 Key
+    filtered = {
+        k: v for k, v in (defaults or {}).items()
+        if k in CHANNEL_SPECIFIC_KEYS and k not in _AUTO_SET_KEYS
+    }
+    row = fetch_one(
+        sql.SQL("""
+            INSERT INTO public.global_settings (setting_key, setting_value, updated_at)
+            VALUES ('NEW_CHANNEL_DEFAULTS', %s, now())
+            ON CONFLICT (setting_key)
+            DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = now()
+            RETURNING *
+        """),
+        (json.dumps(filtered, ensure_ascii=False),),
+    )
+    return {"saved": len(filtered), "defaults": filtered}
+
+
 def list_channels() -> list[dict]:
     """获取所有频道列表（含统计信息）。"""
     rows = fetch_all(
@@ -81,11 +122,16 @@ def create_channel(channel_name: str, display_name: str = "", description: str =
     )
 
     # 创建默认配置（只保留频道级 Key，剔除全局 Key 防止覆盖全局设置）
-    from ..config_schema import GLOBAL_CONFIG_KEYS
+    from ..config_schema import GLOBAL_CONFIG_KEYS, CHANNEL_SPECIFIC_KEYS
     channel_config = {
         k: v for k, v in DEFAULT_CONFIG.items()
         if k not in GLOBAL_CONFIG_KEYS
     }
+    # 合并用户自定义的新增频道默认配置
+    user_defaults = get_new_channel_defaults()
+    for k, v in user_defaults.items():
+        if k in CHANNEL_SPECIFIC_KEYS and k not in _AUTO_SET_KEYS:
+            channel_config[k] = coerce_value(k, v)
     channel_config["YOUTUBE_CHANNEL_NAME"] = channel_name
     channel_config["PROJECT_FLAG"] = channel_name
     # 同步代理到频道配置中的 YOUTUBE_UPLOAD_PROXIES（pipeline 读取此 Key）

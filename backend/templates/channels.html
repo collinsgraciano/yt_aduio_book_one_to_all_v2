@@ -6,6 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3><i class="bi bi-youtube"></i> 频道管理</h3>
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal"><i class="bi bi-plus-lg"></i> 新增频道</button>
+    <button class="btn btn-outline-info" onclick="loadDefaults()"><i class="bi bi-gear"></i> 新增频道默认配置</button>
 </div>
 
 <div class="card p-3">
@@ -33,6 +34,20 @@
         </div>
     </div>
 </div>
+<!-- 新增频道默认配置 Modal -->
+<div class="modal fade" id="defaultsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">新增频道默认配置</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p class="text-muted small">设置新增频道时各频道级配置的默认值。留空的字段使用系统内置默认值。</p>
+                <div id="defaults-editor"></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" onclick="saveDefaults()">保存</button></div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -99,6 +114,66 @@ async function testProxyNew() {
             ? `<span class="text-success">✅ ${res.message}</span>`
             : `<span class="text-danger">❌ ${res.message}</span>`;
     } catch (e) { el.innerHTML = `<span class="text-danger">❌ ${e.message}</span>`; }
+}
+
+let _defaultsSchema = null;
+const _SKIP_DEFAULT_KEYS = new Set(['YOUTUBE_CHANNEL_NAME', 'PROJECT_FLAG', 'YOUTUBE_UPLOAD_PROXIES']);
+
+async function loadDefaults() {
+    try {
+        if (!_defaultsSchema) _defaultsSchema = await api('/api/config/schema');
+        const res = await api('/api/channels/defaults');
+        renderDefaultsEditor(res.defaults || {}, _defaultsSchema);
+        new bootstrap.Modal(document.getElementById('defaultsModal')).show();
+    } catch (e) { showToast('加载默认配置失败: ' + e.message, 'danger'); }
+}
+
+function renderDefaultsEditor(defaults, schema) {
+    const categories = schema.categories || {};
+    const globalKeys = new Set(schema.global_keys || []);
+    let html = '';
+    for (const [cat, items] of Object.entries(categories)) {
+        const channelItems = (items || []).filter(item =>
+            !globalKeys.has(item.key) && !_SKIP_DEFAULT_KEYS.has(item.key)
+        );
+        if (channelItems.length === 0) continue;
+        html += `<h6 class="text-primary mt-3 border-bottom pb-1">${cat}</h6><div class="row">`;
+        for (const item of channelItems) {
+            const val = defaults[item.key] ?? item.default;
+            const label = item.label || item.key;
+            const desc = item.description ? `<small class="text-muted">${item.description}</small>` : '';
+            let input;
+            if (item.type === 'bool') {
+                input = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-key="${item.key}" ${val ? 'checked' : ''}></div>`;
+            } else if (item.type === 'enum') {
+                const opts = (item.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
+                input = `<select class="form-select form-select-sm" data-key="${item.key}">${opts}</select>`;
+            } else if (item.type === 'int' || item.type === 'float') {
+                input = `<input type="number" class="form-control form-control-sm" data-key="${item.key}" value="${val}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.type === 'float' ? 'step="0.1"' : ''}>`;
+            } else {
+                input = `<input type="text" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}">`;
+            }
+            html += `<div class="col-md-6 mb-2"><label class="form-label small">${label}</label>${input}${desc}</div>`;
+        }
+        html += '</div>';
+    }
+    document.getElementById('defaults-editor').innerHTML = html || '<p class="text-muted">没有可配置的频道级默认值</p>';
+}
+
+async function saveDefaults() {
+    const inputs = document.querySelectorAll('#defaults-editor [data-key]');
+    const config = {};
+    for (const input of inputs) {
+        const key = input.dataset.key;
+        if (input.type === 'checkbox') config[key] = input.checked;
+        else if (input.type === 'number') config[key] = parseFloat(input.value);
+        else config[key] = input.value;
+    }
+    try {
+        await api('/api/channels/defaults', { method: 'PUT', body: JSON.stringify(config) });
+        showToast('默认配置已保存');
+        bootstrap.Modal.getInstance(document.getElementById('defaultsModal')).hide();
+    } catch (e) { showToast('保存失败: ' + e.message, 'danger'); }
 }
 
 loadChannels();
