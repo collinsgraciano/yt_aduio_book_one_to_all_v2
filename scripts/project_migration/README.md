@@ -1,4 +1,4 @@
-# 项目迁移指南
+﻿# 项目迁移指南
 
 ## 1. 概述
 
@@ -58,13 +58,13 @@ SSH 登录源 VPS：
 cd /root/audiobook
 
 # 导出（不含音频输出文件，推荐）
-bash scripts/project_export.sh
+bash scripts/project_migration/project_export.sh
 
 # 或导出（含音频输出文件，文件可能很大）
-bash scripts/project_export.sh --with-output
+bash scripts/project_migration/project_export.sh --with-output
 
 # 或导出到指定目录
-bash scripts/project_export.sh /tmp --with-output
+bash scripts/project_migration/project_export.sh /tmp --with-output
 ```
 
 脚本执行流程：
@@ -136,10 +136,10 @@ cd /root/audiobook
 git pull
 
 # 执行导入（会提示确认）
-bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz
+bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz
 
 # 或跳过确认提示（自动化场景）
-bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz --force
+bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz --force
 ```
 
 脚本执行流程：
@@ -350,7 +350,7 @@ cd /root/audiobook
 docker-compose down -v
 
 # 重新部署
-bash scripts/git-server-deploy.sh
+bash scripts/deploy/git-server-deploy.sh
 ```
 
 ### 场景 3：回退到源 VPS
@@ -378,7 +378,7 @@ docker-compose up -d
 docker-compose down -v
 docker-compose up -d --build
 # 然后重新运行导入脚本
-bash scripts/project_import.sh migration_bundle_YYYYMMDD_HHMMSS.tar.gz --force
+bash scripts/project_migration/project_import.sh migration_bundle_YYYYMMDD_HHMMSS.tar.gz --force
 ```
 
 ### Q: 迁移后 YouTube OAuth 失效？
@@ -406,7 +406,7 @@ grep SECRET_KEY .env
 **A**：默认不迁移音频输出文件。如需迁移，在源 VPS 导出时使用 `--with-output` 参数：
 
 ```bash
-bash scripts/project_export.sh --with-output
+bash scripts/project_migration/project_export.sh --with-output
 ```
 
 > 注意：输出文件可能占用大量磁盘空间和传输带宽。
@@ -447,7 +447,7 @@ DeepFilter 降噪二进制仅支持 `x86_64`。如果目标 VPS 是 ARM 架构�
 tar xzf migration_bundle_YYYYMMDD_HHMMSS.tar.gz -C /tmp/migration
 
 # 只恢复数据库
-bash scripts/db_restore.sh /tmp/migration/db_backup.sql.gz
+bash scripts/db_backup/db_restore.sh /tmp/migration/db_backup.sql.gz
 ```
 
 > 但注意：如果不迁移 `.env`，`SECRET_KEY` 不一致会导致加密数据无法解密。
@@ -465,10 +465,10 @@ bash scripts/db_restore.sh /tmp/migration/db_backup.sql.gz
 | `--with-output` | 包含音频输出文件 |
 
 ```bash
-bash scripts/project_export.sh                     # 默认
-bash scripts/project_export.sh /tmp                # 指定目录
-bash scripts/project_export.sh --with-output       # 含输出文件
-bash scripts/project_export.sh /tmp --with-output   # 指定目录 + 含输出文件
+bash scripts/project_migration/project_export.sh                     # 默认
+bash scripts/project_migration/project_export.sh /tmp                # 指定目录
+bash scripts/project_migration/project_export.sh --with-output       # 含输出文件
+bash scripts/project_migration/project_export.sh /tmp --with-output   # 指定目录 + 含输出文件
 ```
 
 ### project_import.sh（目标 VPS 运行）
@@ -479,8 +479,8 @@ bash scripts/project_export.sh /tmp --with-output   # 指定目录 + 含输出�
 | `--force` | 跳过确认提示 |
 
 ```bash
-bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz
-bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz --force
+bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz
+bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz --force
 ```
 
 ---
@@ -490,7 +490,7 @@ bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz --force
 ```bash
 # ═══ 源 VPS (VPS-A) ═══
 cd /root/audiobook
-bash scripts/project_export.sh
+bash scripts/project_migration/project_export.sh
 # 输出: backups/migration_bundle_20260721_120000.tar.gz (15M)
 
 # ═══ 传输 ═══
@@ -499,7 +499,7 @@ scp backups/migration_bundle_20260721_120000.tar.gz root@VPS-B_IP:/root/audioboo
 # ═══ 目标 VPS (VPS-B) ═══
 cd /root/audiobook
 git pull
-bash scripts/project_import.sh migration_bundle_20260721_120000.tar.gz
+bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz
 # 输入 yes 确认
 
 # ═══ 迁移后配置 ═══

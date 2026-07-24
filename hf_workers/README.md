@@ -1,4 +1,4 @@
-# HF 外包架构部署指南
+﻿# HF 外包架构部署指南
 
 ## 架构概览
 
@@ -85,7 +85,7 @@ VPS 中继调度器已合并到主项目 `docker-compose.yml`，无需单独部�
 
 ```bash
 cd /root/audiobook
-bash scripts/git-server-deploy.sh
+bash scripts/deploy/git-server-deploy.sh
 ```
 
 部署脚本会自动检测 `hf_workers/vps_relay/` 目录的源码变更，按需重建镜像。启动后三个容器同时运行：
@@ -185,7 +185,7 @@ curl -X POST http://VPS_IP:38080/api/config \
 ```bash
 WORKER_URLS=https://你的用户名-audiobook-worker-1.hf.space
 ```
-然后运行 `bash scripts/git-server-deploy.sh` 重启。
+然后运行 `bash scripts/deploy/git-server-deploy.sh` 重启。
 
 ### 第四步：在后端全局设置中配置
 

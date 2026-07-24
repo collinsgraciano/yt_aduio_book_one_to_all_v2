@@ -1,4 +1,4 @@
-# 有声书 YouTube 频道统一管理系统 (v2 重构版)
+﻿# 有声书 YouTube 频道统一管理系统 (v2 重构版)
 
 多频道管理、视频自动上传、配置可视化编辑、一键 Docker 部署。
 
@@ -14,7 +14,7 @@ cp .env.example .env
 # 编辑 .env，设置 POSTGRES_PASSWORD, SECRET_KEY, BASE_URL
 
 # 3. 一键部署
-bash scripts/git-server-deploy.sh
+bash scripts/deploy/git-server-deploy.sh
 ```
 
 浏览器打开 `http://服务器IP:59386`，默认密码 `inriynisse`。
@@ -26,7 +26,7 @@ bash scripts/git-server-deploy.sh
 git add -A && git commit -m "更新" && git push
 
 # 服务器拉取部署
-cd /root/audiobook && bash scripts/git-server-deploy.sh
+cd /root/audiobook && bash scripts/deploy/git-server-deploy.sh
 ```
 
 ## 开发模式
