@@ -211,7 +211,6 @@ from .state import (
     restore_split_shared_assets_from_state,
     persist_split_shared_assets_to_state,
     build_standard_processing_state,
-    MIN_BOOK_DURATION_SECONDS,
 )
 
 # ---------------------------------------------------------------------------
@@ -1404,9 +1403,10 @@ def reconcile_split_part_upload_states(result, state, split_plan, book_name, cat
 # 跳过长音频 & 最终化（原文件行 7852-7877 / 2870-2971 / 8012-8044）
 # ---------------------------------------------------------------------------
 def skip_and_delete_short_book(book_record, result, book_name):
+    min_duration = int(getattr(cfg, "MIN_BOOK_DURATION_SECONDS", 1800) or 1800)
     duration_text = format_seconds_hhmmss(getattr(result, "estimated_total_duration_seconds", 0))
     short_reason = (
-        f"预估总时长 {duration_text} 小于 {format_seconds_hhmmss(MIN_BOOK_DURATION_SECONDS)}，"
+        f"预估总时长 {duration_text} 小于 {format_seconds_hhmmss(min_duration)}，"
         "已跳过处理并从 books 表删除。"
     )
     try:
@@ -1418,7 +1418,7 @@ def skip_and_delete_short_book(book_record, result, book_name):
             log.warning("[%s] books 记录已删除，但清理 book_processing_states 失败: %s", book_name, state_error)
     except Exception as e:
         result.error = (
-            f"预估总时长 {duration_text} 小于 {format_seconds_hhmmss(MIN_BOOK_DURATION_SECONDS)}，"
+            f"预估总时长 {duration_text} 小于 {format_seconds_hhmmss(min_duration)}，"
             f"但删除 books 记录失败: {e}"
         )
         return result
@@ -1719,7 +1719,7 @@ def process_book(book_record: dict, run_started_at=None) -> BookResult:
     if explicit_total_duration_seconds is not None:
         result.estimated_total_duration_seconds = explicit_total_duration_seconds
 
-    if explicit_total_duration_seconds is not None and 0 < int(explicit_total_duration_seconds or 0) < MIN_BOOK_DURATION_SECONDS:
+    if explicit_total_duration_seconds is not None and 0 < int(explicit_total_duration_seconds or 0) < int(getattr(cfg, "MIN_BOOK_DURATION_SECONDS", 1800) or 1800):
         skip_and_delete_short_book(book_record, result, book_name)
         return finish()
 

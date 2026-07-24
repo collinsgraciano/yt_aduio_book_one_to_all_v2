@@ -137,6 +137,11 @@ CONFIG_SCHEMA: dict[str, dict] = {
         "type": "bool", "category": "⚙️ 流程控制", "label": "强制重新处理",
         "default": False,
     },
+    "MIN_BOOK_DURATION_SECONDS": {
+        "type": "int", "category": "⚙️ 流程控制", "label": "最短音频时长（秒）",
+        "default": 1800, "global": True,
+        "description": "预估总时长低于此值的书籍将被跳过并从 books 表删除（默认 1800 秒 = 30 分钟）",
+    },
     "QUIET_RUNTIME_OUTPUT": {
         "type": "bool", "category": "⚙️ 流程控制", "label": "静默模式",
         "default": True,

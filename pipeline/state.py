@@ -46,8 +46,8 @@ from .audio import (
     get_explicit_total_book_duration_seconds,
 )
 
-# MIN_BOOK_DURATION_SECONDS（原文件行 1172）
-MIN_BOOK_DURATION_SECONDS = 30 * 60
+# MIN_BOOK_DURATION_SECONDS — 从 config 读取（原文件行 1172 硬编码 30*60）
+MIN_BOOK_DURATION_SECONDS = int(getattr(cfg, "MIN_BOOK_DURATION_SECONDS", 1800) or 1800)
 
 
 # ============================================================================
