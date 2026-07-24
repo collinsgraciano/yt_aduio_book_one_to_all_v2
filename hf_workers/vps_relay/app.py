@@ -1097,6 +1097,11 @@ def pipeline_config():
         "MODELSCOPE_TOKEN": _fetch_global_setting("MODELSCOPE_TOKEN"),
         "POSTGRES_DSN": POSTGRES_DSN,
         "OUTPUT_ROOT": "/tmp/output",
+        # 从 global_settings 读取全局配置项
+        "API_PRIORITY_ORDER": _fetch_global_setting("API_PRIORITY_ORDER") or "modelscope,sensenova",
+        "ENABLE_COVER_GENERATION": _fetch_global_setting("ENABLE_COVER_GENERATION") or "true",
+        "ENABLE_SEO_GENERATION": _fetch_global_setting("ENABLE_SEO_GENERATION") or "true",
+        "MIN_BOOK_DURATION_SECONDS": _fetch_global_setting("MIN_BOOK_DURATION_SECONDS") or "1800",
         # 以下从面板运行时配置读取（可在 Web 面板修改）
         "ENABLE_DEEPFILTER": _cfg("pipeline_enable_deepfilter", False),
         "ENABLE_TG_AUDIO_CACHE": _cfg("pipeline_enable_tg_audio_cache", True),
