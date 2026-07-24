@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════�?# 数据库备份脚�?�?全库备份到压�?SQL 文件
 # ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/db_backup/db_backup.sh                    # 备份到默认目�?./backups/
 #   bash scripts/db_backup/db_backup.sh /path/to/backupdir  # 备份到指定目�?#   bash scripts/db_backup/db_backup.sh /path/to/file.sql.gz  # 备份到指定文�?# ══════════════════════════════════════════════════════════════�?

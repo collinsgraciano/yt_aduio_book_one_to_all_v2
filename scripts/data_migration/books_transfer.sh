@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════�?# books 表直传脚�?�?在源 VPS 上运行，直连目标 VPS PostgreSQL
 # ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/data_migration/books_transfer.sh --dsn "postgresql://USER:PASS@HOST:PORT/DB"
 #   bash scripts/data_migration/books_transfer.sh --dsn "postgresql://USER:PASS@HOST:PORT/DB" --force

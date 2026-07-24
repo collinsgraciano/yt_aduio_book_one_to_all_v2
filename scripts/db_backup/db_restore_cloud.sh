@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════�?# 从云盘下载备份并恢复数据�?# ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/db_backup/db_restore_cloud.sh                          # 交互式选最新备份（默认 gdrive�?#   bash scripts/db_backup/db_restore_cloud.sh --list                    # 仅列出云端备�?#   bash scripts/db_backup/db_restore_cloud.sh --source mega             # �?Mega 下载
 #   bash scripts/db_backup/db_restore_cloud.sh --file audiobook_backup_20260724_031700.sql.gz  # 指定文件
 #   bash scripts/db_backup/db_restore_cloud.sh --source mega --file xxx.sql.gz --with-env

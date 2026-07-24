@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════�?# 项目迁移导入脚本 �?在目�?VPS 上运行，从迁移包恢复完整项目
 # ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/project_migration/project_import.sh <迁移包路�?
 #   bash scripts/project_migration/project_import.sh migration_bundle_20260721_120000.tar.gz

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════�?# 数据库恢复脚�?�?从压�?SQL 备份文件恢复
 # ══════════════════════════════════════════════════════════════�?# 用法�?#   bash scripts/db_backup/db_restore.sh backups/audiobook_backup_20260720_120000.sql.gz
 #   bash scripts/db_backup/db_restore.sh /path/to/backup.sql.gz
