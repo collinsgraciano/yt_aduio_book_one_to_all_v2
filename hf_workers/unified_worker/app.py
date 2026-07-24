@@ -797,6 +797,45 @@ def run_sync():
 # API 端点 — 通用
 # ═══════════════════════════════════════════════════════════
 
+@app.route("/redeploy", methods=["POST"])
+def redeploy():
+    """触发 HF Space 重新部署（factory reboot，从 Dockerfile 完整重建）。
+
+    调用 HF Hub API: POST /api/spaces/{namespace}/{name}/restart?factory=true
+    需要 HF_TOKEN 环境变量（在 Space Settings → Secrets 中配置）。
+    """
+    token = os.environ.get("HF_TOKEN", "")
+    space_author = os.environ.get("SPACE_AUTHOR_NAME", "")
+    space_name = os.environ.get("SPACE_REPO_NAME", "")
+
+    if not token:
+        return jsonify({"ok": False, "error": "HF_TOKEN 未配置，请在 Space Settings → Secrets 中添加"}), 400
+    if not space_author or not space_name:
+        return jsonify({"ok": False, "error": "无法获取 Space 信息（SPACE_AUTHOR_NAME / SPACE_REPO_NAME）"}), 400
+
+    try:
+        resp = requests.post(
+            f"https://huggingface.co/api/spaces/{space_author}/{space_name}/restart",
+            params={"factory": "true"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        if resp.status_code in (200, 202):
+            logger.info("[重新部署] factory reboot 已触发: %s/%s", space_author, space_name)
+            return jsonify({"ok": True, "message": "已触发重新部署，Space 将在几秒内开始重建"})
+        else:
+            error_detail = ""
+            try:
+                error_detail = resp.json().get("error", "")
+            except Exception:
+                error_detail = resp.text[:200]
+            logger.error("[重新部署] 失败: %s %s", resp.status_code, error_detail)
+            return jsonify({"ok": False, "error": f"HTTP {resp.status_code}: {error_detail}"}), 502
+    except Exception as e:
+        logger.error("[重新部署] 异常: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/refresh-config", methods=["POST"])
 def refresh_config():
     """从 VPS 拉取最新配置。"""
@@ -875,6 +914,7 @@ button:hover{background:#6b46a3}button.danger{background:#dc2626}button.success{
   <button onclick="refresh()">刷新配置</button>
   <button onclick="testRelay()">测试VPS中继</button>
   <button onclick="syncBgm()">同步BGM音乐</button>
+  <button class="danger" onclick="redeploy()">🔄 重新部署</button>
   <span id="batch-info" style="margin-left:12px"></span>
   <span id="bgm-info" style="margin-left:12px"></span>
 </div>
@@ -907,6 +947,7 @@ async function stopBatch(){await fetch('/batch-stop',{method:'POST'});load();}
 async function refresh(){const r=await fetch('/refresh-config',{method:'POST'});const d=await r.json();alert(d.ok?'配置已刷新':'刷新失败');load();}
 async function testRelay(){const r=await fetch('/test-relay');const d=await r.json();alert(d.ok?'VPS中继可达':'失败: '+d.error);}
 async function syncBgm(){const r=await fetch('/sync-bgm',{method:'POST'});const d=await r.json();alert(d.ok?'BGM下载已启动':'失败: '+d.error);}
+async function redeploy(){if(!confirm('确认重新部署？Space 将从 Dockerfile 完整重建（含从 GitHub 拉取最新 pipeline）。'))return;const r=await fetch('/redeploy',{method:'POST'});const d=await r.json();if(d.ok){alert('✅ '+d.message+'\n\n页面将在几秒后断开，重建完成后自动恢复。');}else{alert('❌ 重新部署失败: '+(d.error||'未知错误'));}}
 async function loadBgm(){try{const r=await fetch('/bgm-status');const d=await r.json();const s=d.sync_status||{};let txt=`🎵 BGM: ${d.music_count}首`;if(s.running){txt+=` | 下载中 ${s.done}/${s.total} ${s.current||''}`;}else if(s.error){txt+=` | ❌${s.error}`;}document.getElementById('bgm-info').textContent=txt;}catch(e){}}
 load();loadBgm();setInterval(load,3000);setInterval(loadBgm,5000);
 </script></body></html>"""

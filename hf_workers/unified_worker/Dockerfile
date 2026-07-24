@@ -10,10 +10,12 @@
 #   - 持久目录 /data（BGM 音乐缓存）
 #   - 临时输出 /tmp/output（HF 重启后清空，中间文件无需持久化）
 #
-# 构建上下文：HF Space 仓库根目录（文件铺平，无子目录前缀）
+# 构建上下文：HF Space 仓库根目录（仅需此 Dockerfile 一个文件）
 #   docker build -f Dockerfile -t hf-unified-worker .
 #
-# pipeline/ 从 GitHub 仓库自动拉取，无需本地 COPY：
+# 全部代码从 GitHub 仓库自动拉取，无需本地 COPY：
+#   - pipeline/         → 核心流水线
+#   - app.py / runner.py / shared.py / requirements.txt → Worker 应用
 #   https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2
 # ═══════════════════════════════════════════════════════════
 
@@ -21,7 +23,7 @@ FROM python:3.11-slim
 
 # ─── 系统依赖 ───
 # ffmpeg: 视频封装 + 音频处理
-# wget/curl: DeepFilter 下载
+# wget/curl: DeepFilter 下载 + GitHub 拉取
 # libpq5: psycopg 运行时依赖
 # libsndfile1: librosa 读取音频文件
 RUN apt-get update -o Acquire::Retries=5 -o Acquire::Timeout=30 \
@@ -36,21 +38,20 @@ RUN apt-get update -o Acquire::Retries=5 -o Acquire::Timeout=30 \
 
 WORKDIR /app
 
-# ─── Python 依赖 ───
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
-
-# ─── 从 GitHub 拉取 pipeline 包 ───
+# ─── 从 GitHub 拉取全部代码（pipeline + Worker 应用）───
+# 一次下载，提取 pipeline/ 和 unified_worker/ 下的所有文件
 RUN wget -q -O /tmp/repo.tar.gz \
         "https://github.com/collinsgraciano/yt_aduio_book_one_to_all_v2/archive/refs/heads/main.tar.gz" \
     && tar -xzf /tmp/repo.tar.gz -C /tmp/ \
     && mv /tmp/yt_aduio_book_one_to_all_v2-main/pipeline/ /app/pipeline/ \
+    && cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/app.py        /app/app.py \
+    && cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/runner.py     /app/runner.py \
+    && cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/shared.py     /app/shared.py \
+    && cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/requirements.txt /tmp/requirements.txt \
     && rm -rf /tmp/repo.tar.gz /tmp/yt_aduio_book_one_to_all_v2-main
 
-# ─── 复制统一 Worker 应用 ───
-COPY app.py /app/app.py
-COPY runner.py /app/runner.py
-COPY shared.py /app/shared.py
+# ─── Python 依赖 ───
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # ─── DeepFilter 二进制 ───
 # TG 缓存模式默认 ENABLE_DEEPFILTER=False，但作为断点续跑兜底。
