@@ -488,6 +488,7 @@ CHANNEL_SPECIFIC_KEYS = {
     "VOLUME_OFFSET_DB",       # BGM 音量偏移
     "BGM_DUCKING_MODE",       # BGM 降噪模式（sidechain/envelope）
     "BGM_BASE_GAIN_DB",       # BGM 基础增益（sidechain 模式）
+    "BGM_INTRO_OUTRO_SECONDS",  # BGM 首尾段时长（Content ID 参考）
     # YouTube 上传相关（每频道独立配置）
     "YOUTUBE_UPLOAD_PROXIES",  # 频道级 SOCKS5 代理
     "YOUTUBE_PRIVACY_STATUS",
