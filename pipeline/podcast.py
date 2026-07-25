@@ -906,6 +906,76 @@ def _call_sensenova_for_draw_prompt(book_name, book_desc):
     return ""
 
 
+def _call_sensenova_for_seo_text(book_name, book_desc):
+    """使用 Sensenova (Podcast AI) 生成 SEO 文案（title/Description/label JSON）。"""
+    import traceback as _tb
+    try:
+        client = OpenAI(
+            base_url=str(getattr(cfg, "SENSENOVA_BASE_URL", "https://token.sensenova.cn/v1") or "").strip(),
+            api_key=str(getattr(cfg, "SENSENOVA_API_KEY", "") or "").strip(),
+        )
+    except TypeError as e:
+        log.error("❌ [Sensenova SEO] 创建 OpenAI 客户端失败: %s", e)
+        return None
+
+    model_name = str(
+        getattr(cfg, "YOUTUBE_PODCAST_TEXT_MODEL_PRIMARY", "qwen-plus") or "qwen-plus"
+    ).strip()
+    retries = max(1, int(getattr(cfg, "YOUTUBE_PODCAST_TEXT_MODEL_RETRIES", 3) or 3))
+
+    system_prompt = """角色设定：
+你现在是一位千万粉丝级别的 YouTube 运营专员与 SEO 大师。
+你的任务是根据提供的【书名】和【内容简介】，为有声书视频精心打造一套高点击率（CTR）视频标题、引人入胜的描述、以及利于算法推荐的 #标签。
+
+输出格式约束（必须严格遵守的铁律）：
+你必须且只能返回一个合法的 JSON 格式对象字符串，绝对禁止输出任何多余的汉字解释、前言或者 Markdown 代码块标识！不要加上 ```json 这三个字！
+JSON 必须严格有且只有以下三个 key：
+{
+  "title": "你设计的高吸引力长标题",
+  "Description": "用Emoji点缀的带悬念和痛点的高转换率介绍词，长度大约 200 字。",
+  "label": "#有声书 #个人成长 #认知刷新 等至少20个长短尾热门标签组"
+}"""
+
+    user_prompt = f"书名：[{book_name}]\n简介：[{book_desc}]"
+
+    for attempt_index in range(retries):
+        try:
+            log.info(
+                "🔄 [Sensenova SEO] 使用 %s 生成 SEO 文案 (第 %d/%d 次)...",
+                model_name,
+                attempt_index + 1,
+                retries,
+            )
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            result = _podcast_extract_chat_text(response)
+            if result:
+                import json as _json
+                cleaned = _strip_markdown_code_fences(result)
+                seo_dict = _json.loads(cleaned)
+                if isinstance(seo_dict, dict):
+                    log.info("✅ [Sensenova SEO] SEO 文案生成成功。")
+                    return seo_dict
+            raise ValueError("Sensenova 返回的文本内容为空或非 JSON。")
+        except Exception as e:
+            if isinstance(e, (TypeError, ImportError, AttributeError, ModuleNotFoundError)):
+                tb_str = ''.join(_tb.format_exception(type(e), e, e.__traceback__))
+                log.error("❌ [Sensenova SEO] 遇到非 API 类错误:\n%s\n完整堆栈:\n%s", e, tb_str)
+                return None
+            err_text = _podcast_error_text(e)
+            log.warning("⚠️ [Sensenova SEO] 第 %d/%d 次失败: %s", attempt_index + 1, retries, err_text)
+            if attempt_index < retries - 1:
+                time.sleep(_podcast_ai_retry_sleep_seconds(attempt_index))
+
+    log.error("❌ [Sensenova SEO] 全部 %d 次重试均失败。", retries)
+    return None
+
+
 # ---- 图片 URL 下载（被 _sensenova_generate_cover_fallback 使用）----
 
 

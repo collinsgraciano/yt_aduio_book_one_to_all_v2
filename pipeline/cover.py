@@ -750,6 +750,47 @@ def _dispatch_cover_text(book_name, book_desc, text_token_pool, prompt_generatio
     return "", all_errors
 
 
+def _dispatch_seo_text(book_name, book_desc, text_token_pool, attempt, runner):
+    """按 API_PRIORITY_ORDER 优先级依次尝试生成 SEO 文案。
+
+    返回 (seo_dict, errors) 元组。seo_dict 为 None 表示全部失败。
+    """
+    priority_list = _parse_api_priority_order()
+    all_errors = []
+
+    for api_name in priority_list:
+        if api_name == "modelscope":
+            seo_dict, model_errors = _run_text_task_with_model_fallback(
+                task_label="SEO 文案生成",
+                token_pool=text_token_pool,
+                attempt=attempt,
+                runner=runner,
+                model_sequence=_get_modelscope_text_model_sequence(),
+            )
+            if model_errors:
+                all_errors.extend([f"modelscope: {msg}" for msg in model_errors])
+            if seo_dict:
+                log.info("✅ [API 优先级] ModelScope SEO 文案生成成功。")
+                return seo_dict, all_errors
+            next_idx = priority_list.index(api_name) + 1
+            log.warning("⚠️ [API 优先级] ModelScope SEO 文案生成失败，检查下一优先级 %s ...",
+                        priority_list[next_idx] if next_idx < len(priority_list) else "无")
+
+        elif api_name == "sensenova":
+            from .podcast import _call_sensenova_for_seo_text
+
+            log.info("🔄 [API 优先级] 切换到 Sensenova (Podcast AI) 生成 SEO 文案...")
+            sensenova_seo = _call_sensenova_for_seo_text(book_name, book_desc)
+            if sensenova_seo:
+                log.info("✅ [API 优先级] Sensenova SEO 文案生成成功。")
+                return sensenova_seo, all_errors
+            error_msg = "sensenova: Sensenova SEO 文案生成失败"
+            all_errors.append(error_msg)
+            log.warning("⚠️ [API 优先级] Sensenova SEO 文案生成失败。")
+
+    return None, all_errors
+
+
 def _dispatch_cover_image(output_path, draw_prompt, resolution, image_token_pool):
     """按 API_PRIORITY_ORDER 优先级依次尝试生成封面图片。
 

@@ -15,6 +15,7 @@ from .cover import (
     _extract_modelscope_chat_content,
     _strip_markdown_code_fences,
     _get_modelscope_text_model_sequence,
+    _dispatch_seo_text,
 )
 
 
@@ -61,12 +62,12 @@ JSON 必须严格有且只有以下三个 key：
 
             return json.loads(llm_reply)
 
-        seo_dict, generation_errors = _run_text_task_with_model_fallback(
-            task_label="SEO 文案生成",
-            token_pool=text_token_pool,
+        seo_dict, generation_errors = _dispatch_seo_text(
+            book_name=book_name,
+            book_desc=book_desc,
+            text_token_pool=text_token_pool,
             attempt=attempt,
             runner=_generate_seo_dict,
-            model_sequence=text_model_sequence,
         )
 
         if seo_dict:
