@@ -69,7 +69,8 @@ if wget -q -O /tmp/repo.tar.gz \
     cp /tmp/yt_aduio_book_one_to_all_v2-main/hf_workers/unified_worker/requirements.txt /tmp/requirements.txt
     rm -rf /tmp/repo.tar.gz /tmp/yt_aduio_book_one_to_all_v2-main
     pip install --no-cache-dir -q -r /tmp/requirements.txt 2>&1 | tail -1
-    echo "[启动] 代码更新完成"
+    COMMIT=$(wget -q -O - "https://api.github.com/repos/collinsgraciano/yt_aduio_book_one_to_all_v2/commits/main" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha','unknown')[:7])" 2>/dev/null || echo "unknown")
+    echo "[启动] 代码更新完成 (commit: $COMMIT)"
 else
     echo "[启动] ⚠️ GitHub 拉取失败，使用镜像内置代码"
     rm -f /tmp/repo.tar.gz
