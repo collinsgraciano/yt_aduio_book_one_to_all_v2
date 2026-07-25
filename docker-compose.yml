@@ -59,6 +59,7 @@ services:
       - ./data/deepfilter:/opt/deepfilter
       - ./backups:/app/backups
       - ./.env:/app/.env:ro
+      - /root/.config/rclone:/root/.config/rclone:ro
     ports:
       - "59386:59386"
     networks:
