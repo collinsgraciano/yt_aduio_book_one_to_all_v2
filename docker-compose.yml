@@ -57,6 +57,8 @@ services:
       - ./data/music:/data/music
       - ./pipeline:/app/pipeline:ro
       - ./data/deepfilter:/opt/deepfilter
+      - ./backups:/app/backups
+      - ./.env:/app/.env:ro
     ports:
       - "59386:59386"
     networks:

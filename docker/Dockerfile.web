@@ -35,6 +35,8 @@ RUN apt-get update -o Acquire::Retries=5 -o Acquire::Timeout=30 \
     wget \
     curl \
     libpq5 \
+    postgresql-client \
+    rclone \
     && rm -rf /var/lib/apt/lists/*
 
 # 从 builder 阶段拷贝已安装的 Python 包

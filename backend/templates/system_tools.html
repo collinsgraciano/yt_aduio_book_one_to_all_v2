@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+{% block title %}系统工具{% endblock %}
+{% block nav_system_tools %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-tools"></i> 系统工具</h4>
+    <span class="badge bg-info text-dark" id="scriptStatus">空闲</span>
+</div>
+
+<!-- rclone 状态提示 -->
+<div id="rcloneAlert"></div>
+
+<!-- Tab 导航 -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-backup" type="button">
+            <i class="bi bi-database-down"></i> 备份管理
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-restore" type="button">
+            <i class="bi bi-database-up"></i> 恢复数据库
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-export" type="button">
+            <i class="bi bi-box-seam"></i> 项目导出
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+    <!-- ═══ 备份管理 ═══ -->
+    <div class="tab-pane fade show active" id="tab-backup">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">本地备份</h6>
+                    <p class="small text-muted">pg_dump 全库压缩，保留最新 7 份</p>
+                    <button class="btn btn-primary" onclick="runTask('backup')">
+                        <i class="bi bi-database-down"></i> 立即备份
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">云盘备份</h6>
+                    <p class="small text-muted">备份 + 上传 Google Drive + Mega</p>
+                    <button class="btn btn-success" onclick="runTask('cloud_backup')">
+                        <i class="bi bi-cloud-arrow-up"></i> 云盘备份
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">连通性测试</h6>
+                    <p class="small text-muted">验证 rclone + 云盘上传（快速）</p>
+                    <button class="btn btn-outline-info" onclick="runTask('cloud_test')">
+                        <i class="bi bi-wifi"></i> 测试
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hdd"></i> 本地备份文件</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadBackups()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr><th>文件名</th><th>大小</th><th>时间</th><th class="text-end">操作</th></tr>
+                    </thead>
+                    <tbody id="backupList">
+                        <tr><td colspan="4" class="text-center text-muted py-3">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-cloud"></i> 云端备份文件</span>
+                <select id="cloudSource" class="form-select form-select-sm" style="width:auto" onchange="loadCloudBackups()">
+                    <option value="gdrive">Google Drive</option>
+                    <option value="mega">Mega</option>
+                </select>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr><th>文件名</th><th>来源</th><th class="text-end">操作</th></tr>
+                    </thead>
+                    <tbody id="cloudBackupList">
+                        <tr><td colspan="3" class="text-center text-muted py-3">选择来源查看</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 恢复数据库 ═══ -->
+    <div class="tab-pane fade" id="tab-restore">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-hdd"></i> 从本地备份恢复</div>
+            <div class="card-body">
+                <div class="alert alert-warning py-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    恢复会<strong>覆盖</strong>当前数据库的所有数据！
+                </div>
+                <div class="mb-2">选择备份文件：</div>
+                <select id="restoreSelect" class="form-select mb-2">
+                    <option value="">— 选择备份文件 —</option>
+                </select>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="restoreConfirm">
+                    <label class="form-check-label text-danger" for="restoreConfirm">我确认要覆盖当前数据库数据</label>
+                </div>
+                <button class="btn btn-danger" onclick="doRestore()" id="btnRestore" disabled>
+                    <i class="bi bi-database-up"></i> 恢复数据库
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-cloud-download"></i> 从云盘恢复</div>
+            <div class="card-body">
+                <div class="alert alert-warning py-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    恢复会<strong>覆盖</strong>当前数据库的所有数据！
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <select id="cloudRestoreSource" class="form-select">
+                            <option value="gdrive">Google Drive</option>
+                            <option value="mega">Mega</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" id="cloudRestoreFile" placeholder="文件名（留空=最新备份）">
+                    </div>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="cloudRestoreConfirm">
+                    <label class="form-check-label text-danger" for="cloudRestoreConfirm">我确认要覆盖当前数据库数据</label>
+                </div>
+                <button class="btn btn-danger" onclick="doCloudRestore()" id="btnCloudRestore" disabled>
+                    <i class="bi bi-cloud-download"></i> 从云盘恢复
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 项目导出 ═══ -->
+    <div class="tab-pane fade" id="tab-export">
+        <div class="card mb-3">
+            <div class="card-body text-center">
+                <h6 class="text-muted">导出迁移包</h6>
+                <p class="small text-muted">数据库全量备份 + .env 配置 + 表行数统计，打包为 tar.gz</p>
+                <button class="btn btn-primary" onclick="runTask('export')">
+                    <i class="bi bi-box-arrow-up"></i> 导出迁移包
+                </button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-archive"></i> 本地迁移包</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadExports()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>文件名</th><th>大小</th><th>时间</th></tr></thead>
+                    <tbody id="exportList">
+                        <tr><td colspan="3" class="text-center text-muted py-3">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ 实时日志区域 ═══ -->
+<div class="card mt-3" id="logCard" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-terminal"></i> 执行日志
+            <span class="badge bg-info text-dark ms-2" id="logScriptName"></span>
+        </span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">
+            <i class="bi bi-eraser"></i> 清空
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="log-container" id="logContainer" style="min-height:200px;max-height:500px">
+            <p class="text-muted text-center py-3">等待执行...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pollTimer = null;
+let lastLogCount = 0;
+
+const TASK_MAP = {
+    'backup': { url: '/api/system-tools/backup', label: '本地备份' },
+    'cloud_backup': { url: '/api/system-tools/backup/cloud', label: '云盘备份' },
+    'cloud_test': { url: '/api/system-tools/cloud/test', label: '连通性测试' },
+    'export': { url: '/api/system-tools/export', label: '项目导出' },
+};
+
+async function runTask(key) {
+    const cfg = TASK_MAP[key];
+    if (!cfg) return;
+    try {
+        await api(cfg.url, { method: 'POST' });
+        showToast(cfg.label + ' 已启动', 'success');
+        startLogPolling(cfg.label);
+    } catch (e) {
+        showToast(e.message, 'danger');
+    }
+}
+
+async function doRestore() {
+    const file = document.getElementById('restoreSelect').value;
+    if (!file) { showToast('请选择备份文件', 'warning'); return; }
+    try {
+        await api('/api/system-tools/restore/' + encodeURIComponent(file), {
+            method: 'POST', body: JSON.stringify({ confirm: true }),
+        });
+        showToast('数据库恢复已启动', 'success');
+        startLogPolling('数据库恢复');
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function doCloudRestore() {
+    const source = document.getElementById('cloudRestoreSource').value;
+    const filename = document.getElementById('cloudRestoreFile').value.trim();
+    try {
+        await api('/api/system-tools/restore/cloud', {
+            method: 'POST',
+            body: JSON.stringify({ confirm: true, source, filename: filename || null }),
+        });
+        showToast('云盘恢复已启动', 'success');
+        startLogPolling('云盘恢复');
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+function startLogPolling(label) {
+    document.getElementById('logCard').style.display = '';
+    document.getElementById('logScriptName').textContent = label;
+    document.getElementById('logContainer').innerHTML = '';
+    lastLogCount = 0;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollStatus, 1000);
+    pollStatus();
+}
+
+async function pollStatus() {
+    try {
+        const data = await api('/api/system-tools/status');
+        const badge = document.getElementById('scriptStatus');
+        const container = document.getElementById('logContainer');
+
+        if (data.running) {
+            badge.textContent = '运行中';
+            badge.className = 'badge bg-warning text-dark';
+        } else if (data.exit_code !== null) {
+            if (data.exit_code === 0) {
+                badge.textContent = '已完成';
+                badge.className = 'badge bg-success';
+            } else {
+                badge.textContent = '失败';
+                badge.className = 'badge bg-danger';
+            }
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            showToast('执行完成，退出码: ' + data.exit_code, data.exit_code === 0 ? 'success' : 'danger');
+            loadBackups();
+            loadExports();
+        } else {
+            badge.textContent = '空闲';
+            badge.className = 'badge bg-info text-dark';
+        }
+
+        if (data.logs.length > lastLogCount) {
+            const newLines = data.logs.slice(lastLogCount);
+            for (const line of newLines) {
+                const p = document.createElement('p');
+                p.className = 'log-line';
+                p.textContent = line;
+                container.appendChild(p);
+            }
+            lastLogCount = data.logs.length;
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch (e) { console.error('poll error:', e); }
+}
+
+function clearLog() {
+    document.getElementById('logContainer').innerHTML = '';
+    lastLogCount = 0;
+}
+
+async function loadBackups() {
+    try {
+        const data = await api('/api/system-tools/backups');
+        const tbody = document.getElementById('backupList');
+        const sel = document.getElementById('restoreSelect');
+        if (data.backups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">暂无备份</td></tr>';
+        } else {
+            tbody.innerHTML = data.backups.map(b => `
+                <tr>
+                    <td><code>${b.name}</code></td>
+                    <td>${b.size_mb} MB</td>
+                    <td class="small">${fmtTime(b.modified)}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${b.name}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>`).join('');
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">— 选择备份文件 —</option>' +
+                data.backups.map(b => `<option value="${b.name}">${b.name} (${b.size_mb} MB)</option>`).join('');
+            sel.value = cur;
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function deleteBackup(name) {
+    if (!confirm('确认删除 ' + name + '？')) return;
+    try {
+        await api('/api/system-tools/backup/' + encodeURIComponent(name), { method: 'DELETE' });
+        showToast('已删除 ' + name);
+        loadBackups();
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function loadCloudBackups() {
+    const source = document.getElementById('cloudSource').value;
+    const tbody = document.getElementById('cloudBackupList');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">加载中...</td></tr>';
+    try {
+        const data = await api('/api/system-tools/cloud/backups?source=' + source);
+        if (data.backups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">无备份</td></tr>';
+        } else {
+            tbody.innerHTML = data.backups.map(b => `
+                <tr>
+                    <td><code>${b.name}</code></td>
+                    <td><span class="badge bg-info text-dark">${b.source}</span></td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-primary" onclick="useCloudBackup('${b.name}','${b.source}')">
+                            <i class="bi bi-arrow-right-circle"></i> 恢复
+                        </button>
+                    </td>
+                </tr>`).join('');
+        }
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger py-3">${e.message}</td></tr>`;
+    }
+}
+
+function useCloudBackup(name, source) {
+    document.querySelector('button[data-bs-target="#tab-restore"]').click();
+    document.getElementById('cloudRestoreSource').value = source;
+    document.getElementById('cloudRestoreFile').value = name;
+}
+
+async function loadExports() {
+    try {
+        const data = await api('/api/system-tools/exports');
+        const tbody = document.getElementById('exportList');
+        if (data.bundles.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">暂无迁移包</td></tr>';
+        } else {
+            tbody.innerHTML = data.bundles.map(b => `
+                <tr>
+                    <td><code>${b.name}</code></td>
+                    <td>${b.size_mb} MB</td>
+                    <td class="small">${fmtTime(b.modified)}</td>
+                </tr>`).join('');
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function loadRcloneInfo() {
+    try {
+        const data = await api('/api/system-tools/rclone-info');
+        const alert = document.getElementById('rcloneAlert');
+        if (!data.installed) {
+            alert.innerHTML = '<div class="alert alert-warning py-2 mb-3"><i class="bi bi-exclamation-triangle"></i> rclone 未安装，云盘功能不可用。仅支持本地备份。</div>';
+        } else if (!data.gdrive_configured || !data.mega_configured) {
+            let missing = [];
+            if (!data.gdrive_configured) missing.push('gdrive');
+            if (!data.mega_configured) missing.push('mega');
+            alert.innerHTML = '<div class="alert alert-info py-2 mb-3"><i class="bi bi-info-circle"></i> rclone 已安装，但以下远程未配置: ' + missing.join(', ') + '。未配置的云盘将跳过。</div>';
+        } else {
+            alert.innerHTML = '<div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle"></i> rclone 已就绪: gdrive + mega 均已配置</div>';
+        }
+    } catch (e) { console.error(e); }
+}
+
+// 确认框联动
+document.getElementById('restoreConfirm').addEventListener('change', e => {
+    document.getElementById('btnRestore').disabled = !e.target.checked;
+});
+document.getElementById('cloudRestoreConfirm').addEventListener('change', e => {
+    document.getElementById('btnCloudRestore').disabled = !e.target.checked;
+});
+
+// 初始化
+loadBackups();
+loadExports();
+loadCloudBackups();
+loadRcloneInfo();
+pollStatus();
+</script>
+{% endblock %}

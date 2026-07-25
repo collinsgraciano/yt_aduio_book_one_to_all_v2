@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from .settings import settings as app_settings
 from .auth import AuthMiddleware, COOKIE_NAME, COOKIE_MAX_AGE, create_auth_cookie_value
-from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf, scheduled_tasks
+from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf, scheduled_tasks, system_tools
 
 # ─── 日志配置 ───
 logging.basicConfig(
@@ -206,6 +206,7 @@ app.include_router(tests.router)
 app.include_router(tests_hf.router)
 app.include_router(tasks_hf.router)
 app.include_router(scheduled_tasks.router)
+app.include_router(system_tools.router)
 
 # ─── Jinja2 模板 ───
 templates_dir = Path(__file__).parent / "templates"
@@ -305,6 +306,12 @@ async def page_books(request: Request):
 async def page_settings(request: Request):
     """全局设置。"""
     return templates.TemplateResponse("settings.html", {"request": request})
+
+
+@app.get("/system-tools", response_class=HTMLResponse)
+async def page_system_tools(request: Request):
+    """系统工具。"""
+    return templates.TemplateResponse("system_tools.html", {"request": request})
 
 
 @app.get("/tests/ai", response_class=HTMLResponse)
