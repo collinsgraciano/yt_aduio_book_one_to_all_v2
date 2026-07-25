@@ -58,6 +58,7 @@ _runtime_config: dict = {
     "stuck_timeout_m": STUCK_TIMEOUT_M,
     "cleanup_interval": CLEANUP_INTERVAL,
     "web_password": WEB_PASSWORD,
+    "scheduler_random_worker": True,  # 随机选择空闲 Worker 分配任务
     # ── 流水线配置覆盖（分发给 HF Worker）──
     "pipeline_enable_deepfilter": False,        # TG 缓存模式跳过降噪
     "pipeline_enable_tg_audio_cache": True,
@@ -1341,8 +1342,9 @@ def _scheduler_loop():
             _scheduler_runtime["last_pending"] = pending
 
             if pending > 0:
-                # 检查所有 Worker 健康状态
+                # 检查所有 Worker 健康状态，收集空闲 Worker
                 worker_urls = _cfg("worker_urls") or []
+                free_workers = []
                 for url in worker_urls:
                     if _scheduler_stop.is_set():
                         break
@@ -1352,13 +1354,22 @@ def _scheduler_loop():
                     free = int(health.get("free_slots", 0) or 0)
                     if free <= 0:
                         continue
-                    # 触发 Worker 认领处理
-                    if _trigger_worker_process(url):
-                        logger.info("[调度] 触发 Worker %s 认领任务 (pending=%d)", url, pending)
+                    free_workers.append(url)
+
+                if free_workers:
+                    # 随机或顺序选择一个空闲 Worker
+                    if _cfg("scheduler_random_worker", True) and len(free_workers) > 1:
+                        import random
+                        target_url = random.choice(free_workers)
+                    else:
+                        target_url = free_workers[0]
+
+                    if _trigger_worker_process(target_url):
+                        logger.info("[调度] 触发 Worker %s 认领任务 (pending=%d, 空闲=%d)", target_url, pending, len(free_workers))
                         trig_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         _scheduler_runtime["last_trigger_ts"] = time.time()
                         _scheduler_runtime["last_trigger_str"] = trig_str
-                        _scheduler_runtime["last_trigger_worker"] = url
+                        _scheduler_runtime["last_trigger_worker"] = target_url
                         _scheduler_runtime["trigger_count"] += 1
                         # 触发后短暂等待，避免同时触发多个
                         time.sleep(2)
@@ -1445,6 +1456,7 @@ _BOOL_KEYS = {
     "pipeline_skip_existing", "pipeline_force_reprocess",
     "pipeline_quiet_runtime_output",
     "pipeline_cleanup_intermediate_files_after_success",
+    "scheduler_random_worker",
 }
 
 # 整数类型字段列表
@@ -1980,6 +1992,10 @@ th{background:#252836;color:#8b8dff}
       <label>清理间隔（秒）</label>
       <input type="number" id="cfg-cleanup-interval" min="60" value="600">
     </div>
+    <div class="cfg-row">
+      <label>随机选择空闲 Worker</label>
+      <div class="toggle on" id="cfg-scheduler-random-worker" onclick="toggleSwitch(this)"></div>
+    </div>
 
     <div class="cfg-section-title">流水线配置覆盖（分发给 HF Worker）</div>
     <div class="cfg-row">
@@ -2251,6 +2267,7 @@ async function loadConfig(){
     setToggle('cfg-pipeline-force-reprocess', d.pipeline_force_reprocess);
     setToggle('cfg-pipeline-quiet-runtime-output', d.pipeline_quiet_runtime_output);
     setToggle('cfg-pipeline-cleanup-intermediate-files-after-success', d.pipeline_cleanup_intermediate_files_after_success);
+    setToggle('cfg-scheduler-random-worker', d.scheduler_random_worker);
     // pipeline 数值
     document.getElementById('cfg-pipeline-tg-download-interval-seconds').value = d.pipeline_tg_download_interval_seconds ?? 3;
     document.getElementById('cfg-pipeline-youtube-schedule-after-hours').value = d.pipeline_youtube_schedule_after_hours ?? 24;
@@ -2281,6 +2298,7 @@ async function saveConfig(){
     pipeline_force_reprocess: getToggle('cfg-pipeline-force-reprocess'),
     pipeline_quiet_runtime_output: getToggle('cfg-pipeline-quiet-runtime-output'),
     pipeline_cleanup_intermediate_files_after_success: getToggle('cfg-pipeline-cleanup-intermediate-files-after-success'),
+    scheduler_random_worker: getToggle('cfg-scheduler-random-worker'),
     pipeline_youtube_schedule_after_hours: parseInt(document.getElementById('cfg-pipeline-youtube-schedule-after-hours').value) || 24,
     pipeline_youtube_daily_publish_limit: parseInt(document.getElementById('cfg-pipeline-youtube-daily-publish-limit').value) || 3,
   };
