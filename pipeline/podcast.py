@@ -956,6 +956,7 @@ JSON 必须严格有且只有以下三个 key：
             result = _podcast_extract_chat_text(response)
             if result:
                 import json as _json
+                from .cover import _strip_markdown_code_fences
                 cleaned = _strip_markdown_code_fences(result)
                 seo_dict = _json.loads(cleaned)
                 if isinstance(seo_dict, dict):
