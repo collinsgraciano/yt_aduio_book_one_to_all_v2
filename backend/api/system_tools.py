@@ -454,7 +454,7 @@ def start_scheduler() -> None:
                     break  # 一次循环只执行一个任务
             except Exception as e:
                 logger.error("定时任务调度器异常: %s", e)
-            _scheduler_stop.wait(60)
+            _scheduler_stop.wait(3600)
 
     thread = threading.Thread(target=_loop, daemon=True, name="system-tools-scheduler")
     thread.start()
