@@ -159,6 +159,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"定时任务调度器启动失败（非致命）: {e}")
 
+    # 启动系统工具定时任务调度器
+    try:
+        from .api.system_tools import start_scheduler as start_tools_scheduler
+        start_tools_scheduler()
+    except Exception as e:
+        logger.warning(f"系统工具调度器启动失败（非致命）: {e}")
+
     yield
 
     # ── 关闭 ──
@@ -166,6 +173,13 @@ async def lifespan(app: FastAPI):
     try:
         from .services.scheduler_service import stop_scheduler
         stop_scheduler()
+    except Exception:
+        pass
+
+    # 停止系统工具调度器
+    try:
+        from .api.system_tools import stop_scheduler as stop_tools_scheduler
+        stop_tools_scheduler()
     except Exception:
         pass
     # 关闭 backend 数据库连接池
