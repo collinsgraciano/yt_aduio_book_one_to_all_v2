@@ -527,7 +527,7 @@ def run_bgm_test(params: dict, config: dict) -> dict:
                     "sc_ratio": params.get("sc_ratio", 8),
                     "sc_attack_ms": params.get("sc_attack_ms", 5),
                     "sc_release_ms": params.get("sc_release_ms", 400),
-                    "intro_outro_seconds": params.get("intro_outro_seconds", 3),
+                    "intro_outro_seconds": params.get("intro_outro_seconds", 5),
                 }
                 print(f"[BGM测试] 参数: {mix_params}", flush=True)
 

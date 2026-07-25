@@ -461,7 +461,7 @@ def mix_with_bgm(
     sc_ratio=8,
     sc_attack_ms=5,
     sc_release_ms=400,
-    intro_outro_seconds=3,
+    intro_outro_seconds=5,
 ) -> bool:
     try:
         music_files = get_all_music_files(music_dir)
@@ -469,11 +469,12 @@ def mix_with_bgm(
         orig_audio = AudioSegment.from_file(input_path)
         analysis = analyze_audio(orig_audio)
 
-        # ── 侧链模式：跳过动态音量和频谱塑形，保留 BGM 原始指纹 ──
+        # ── 侧链模式：跳过动态音量、频谱塑形和高通滤波，保留 BGM 原始指纹 ──
         is_sidechain = ducking_mode in ("sidechain", "sidechain_adaptive")
         if is_sidechain:
             dyn_vol = False
             spec_shape = False
+            highpass_freq = 0  # 跳过高通滤波，保留完整频率指纹供 Content ID 匹配
             effective_vol_offset = bgm_base_gain_db
 
             # sidechain_adaptive: 阈值随旁白 RMS 动态计算，保证不同章节 BGM/旁白比例恒定

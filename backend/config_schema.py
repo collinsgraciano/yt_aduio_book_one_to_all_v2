@@ -242,8 +242,8 @@ CONFIG_SCHEMA: dict[str, dict] = {
     },
     "BGM_INTRO_OUTRO_SECONDS": {
         "type": "int", "category": "🔊 音频处理", "label": "BGM首尾段(秒)",
-        "default": 3, "min": 0, "max": 30,
-        "description": "每章首尾各添加N秒纯BGM段(无旁白)，给Content ID提供干净指纹参考",
+        "default": 5, "min": 0, "max": 30,
+        "description": "每章首尾各添加N秒纯BGM段(无旁白)，给Content ID提供干净指纹参考(越长越易匹配录音指纹)",
     },
     "LONG_AUDIO_SPLIT_TRIGGER_HOURS": {
         "type": "float", "category": "🔊 音频处理", "label": "分片触发阈值(小时)",

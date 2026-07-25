@@ -44,4 +44,4 @@ class BgmMixRequest(BaseModel):
     sc_ratio: int = 8
     sc_attack_ms: int = 5
     sc_release_ms: int = 400
-    intro_outro_seconds: int = 3
+    intro_outro_seconds: int = 5
