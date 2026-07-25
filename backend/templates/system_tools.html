@@ -155,8 +155,23 @@
             </div>
             <div class="card-body p-0">
                 <table class="table table-hover mb-0">
-                    <thead><tr><th>文件名</th><th>大小</th><th>时间</th></tr></thead>
-                    <tbody id="exportList"><tr><td colspan="3" class="text-center text-muted py-3">加载中...</td></tr></tbody>
+                    <thead><tr><th>文件名</th><th>大小</th><th>时间</th><th class="text-end">操作</th></tr></thead>
+                    <tbody id="exportList"><tr><td colspan="4" class="text-center text-muted py-3">加载中...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-cloud"></i> 云端迁移包</span>
+                <select id="cloudExportSource" class="form-select form-select-sm" style="width:auto" onchange="loadCloudExports()">
+                    <option value="gdrive">Google Drive</option>
+                    <option value="mega">Mega</option>
+                </select>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>文件名</th><th>来源</th><th class="text-end">操作</th></tr></thead>
+                    <tbody id="cloudExportList"><tr><td colspan="3" class="text-center text-muted py-3">选择来源查看</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -314,9 +329,32 @@ async function loadExports() {
     try {
         const data = await api('/api/system-tools/exports');
         const tbody = document.getElementById('exportList');
-        if (data.bundles.length === 0) { tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">暂无迁移包</td></tr>'; }
-        else { tbody.innerHTML = data.bundles.map(b => `<tr><td><code>${b.name}</code></td><td>${b.size_mb} MB</td><td class="small">${fmtTime(b.modified)}</td></tr>`).join(''); }
+        if (data.bundles.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">暂无迁移包</td></tr>'; }
+        else { tbody.innerHTML = data.bundles.map(b => `<tr><td><code>${b.name}</code></td><td>${b.size_mb} MB</td><td class="small">${fmtTime(b.modified)}</td><td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="deleteExport('${b.name}')"><i class="bi bi-trash"></i></button></td></tr>`).join(''); }
     } catch (e) { console.error(e); }
+}
+
+async function deleteExport(name) {
+    if (!confirm('确认删除 ' + name + '？')) return;
+    try { await api('/api/system-tools/export/' + encodeURIComponent(name), { method: 'DELETE' }); showToast('已删除 ' + name); loadExports(); }
+    catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function loadCloudExports() {
+    const source = document.getElementById('cloudExportSource').value;
+    const tbody = document.getElementById('cloudExportList');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">加载中...</td></tr>';
+    try {
+        const data = await api('/api/system-tools/cloud/exports?source=' + source);
+        if (data.bundles.length === 0) { tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">无迁移包</td></tr>'; }
+        else { tbody.innerHTML = data.bundles.map(b => `<tr><td><code>${b.name}</code></td><td><span class="badge bg-info text-dark">${b.source}</span></td><td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="deleteCloudExport('${b.name}','${b.source}')"><i class="bi bi-trash"></i></button></td></tr>`).join(''); }
+    } catch (e) { tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger py-3">${e.message}</td></tr>`; }
+}
+
+async function deleteCloudExport(name, source) {
+    if (!confirm('确认从 ' + source + ' 删除 ' + name + '？')) return;
+    try { await api('/api/system-tools/cloud/export/' + encodeURIComponent(name) + '?source=' + source, { method: 'DELETE' }); showToast('已从 ' + source + ' 删除 ' + name); loadCloudExports(); }
+    catch (e) { showToast(e.message, 'danger'); }
 }
 
 // ─── 定时任务 ───
@@ -408,6 +446,6 @@ document.getElementById('restoreConfirm').addEventListener('change', e => { docu
 document.getElementById('cloudRestoreConfirm').addEventListener('change', e => { document.getElementById('btnCloudRestore').disabled = !e.target.checked; });
 
 // 初始化
-loadBackups(); loadExports(); loadCloudBackups(); loadRcloneInfo(); loadSchedule(); pollStatus();
+loadBackups(); loadExports(); loadCloudBackups(); loadCloudExports(); loadRcloneInfo(); loadSchedule(); pollStatus();
 </script>
 {% endblock %}

@@ -753,6 +753,55 @@ def list_exports():
     return {"bundles": _list_files(_BACKUP_DIR, "migration_bundle_*.tar.gz")}
 
 
+@router.delete("/export/{filename}")
+def delete_export(filename: str):
+    """删除本地迁移包文件。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="无效的文件名")
+    filepath = _BACKUP_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="迁移包不存在")
+    filepath.unlink()
+    return {"success": True, "message": f"已删除 {filename}"}
+
+
+@router.get("/cloud/exports")
+def list_cloud_exports(source: str = "gdrive"):
+    """列出云端迁移包文件。"""
+    remote_map = {"gdrive": RCLONE_GDRIVE, "mega": RCLONE_MEGA}
+    remote = remote_map.get(source)
+    if not remote:
+        raise HTTPException(status_code=400, detail="不支持的源，可选 gdrive 或 mega")
+    try:
+        files = _rclone_lsf(remote)
+        bundles = [
+            {"name": f, "source": source}
+            for f in files
+            if "migration_bundle_" in f and f.endswith(".tar.gz")
+        ]
+        return {"bundles": bundles, "source": source}
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=504, detail=f"rclone 超时或失败: {e}")
+
+
+@router.delete("/cloud/export/{filename}")
+def delete_cloud_export(filename: str, source: str = "gdrive"):
+    """删除云端迁移包文件。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="无效的文件名")
+    remote_map = {"gdrive": RCLONE_GDRIVE, "mega": RCLONE_MEGA}
+    remote = remote_map.get(source)
+    if not remote:
+        raise HTTPException(status_code=400, detail="不支持的源")
+    try:
+        _rclone_deletefile(remote, filename)
+        return {"success": True, "message": f"已从 {source} 删除 {filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================
 # 定时任务配置
 # ============================================================
