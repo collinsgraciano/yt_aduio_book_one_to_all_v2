@@ -1101,8 +1101,54 @@ def pipeline_config():
     }
 
     # 从 global_settings 读取全部全局共享配置（与后端 build_runtime_config 逻辑一致）
+    _bool_keys = frozenset({
+        "ENABLE_DEEPFILTER", "ENABLE_BGM_MIX", "ENABLE_DYNAMIC_VOLUME", "ENABLE_SPECTRAL_SHAPING",
+        "ENABLE_COVER_GENERATION", "ENABLE_SEO_GENERATION", "ENABLE_VIDEO_GENERATION",
+        "ENABLE_YOUTUBE_UPLOAD", "ENABLE_YOUTUBE_PODCAST_RUNTIME",
+        "ENABLE_YOUTUBE_PODCAST_UNIFIED_SHOW", "ENABLE_YOUTUBE_PODCAST_SPLIT_PLAYLIST",
+        "ENABLE_TG_AUDIO_CACHE", "ONLY_TG_CACHED_BOOKS", "TG_SERIAL_DOWNLOAD",
+        "SKIP_EXISTING", "FORCE_REPROCESS", "QUIET_RUNTIME_OUTPUT",
+        "CLEANUP_COMPLETED_SPLIT_STATES", "CLEANUP_INTERMEDIATE_FILES_AFTER_SUCCESS",
+        "PRIORITIZE_INTERRUPTED_BOOKS", "ENABLE_AUTO_INSTALL_OPENCC",
+        "ENABLE_YOUTUBE_TRADITIONAL_LOCALIZATION", "APPEND_TAGS_TO_TITLE", "APPEND_TAGS_TO_DESC",
+    })
+    _int_keys = frozenset({
+        "DOWNLOAD_WORKERS", "MAX_RETRIES", "MAX_PROCESS_COUNT", "DEEPFILTER_WORKERS",
+        "VOLUME_OFFSET_DB", "HIGHPASS_FREQ", "FADE_DURATION_MS", "MIN_VOLUME_DB",
+        "BGM_BASE_GAIN_DB", "BGM_DUCK_THRESHOLD_DB", "BGM_DUCK_THRESHOLD_OFFSET_DB",
+        "BGM_DUCK_RATIO", "BGM_DUCK_ATTACK_MS", "BGM_DUCK_RELEASE_MS",
+        "BGM_INTRO_OUTRO_SECONDS", "SEGMENT_DURATION_MINUTES",
+        "MODELSCOPE_TOKEN_SWITCH_DELAY_SECONDS", "MODELSCOPE_IMAGE_CONNECT_TIMEOUT",
+        "MODELSCOPE_IMAGE_READ_TIMEOUT", "MODELSCOPE_IMAGE_POLL_CONNECT_TIMEOUT",
+        "MODELSCOPE_IMAGE_POLL_READ_TIMEOUT", "AUDIO_DOWNLOAD_CONNECT_TIMEOUT",
+        "AUDIO_DOWNLOAD_READ_TIMEOUT", "AUDIO_DOWNLOAD_MAX_RETRY_ATTEMPTS",
+        "AUDIO_DOWNLOAD_MAX_TOTAL_SECONDS", "AUDIO_DOWNLOAD_STUCK_LOG_INTERVAL_SECONDS",
+        "MIN_BOOK_DURATION_SECONDS", "YOUTUBE_PODCAST_IMAGE_SIZE",
+        "YOUTUBE_PODCAST_IMAGE_MAX_BYTES", "YOUTUBE_PODCAST_TEXT_MODEL_RETRIES",
+        "YOUTUBE_PODCAST_IMAGE_MODEL_RETRIES", "YOUTUBE_PODCAST_YT_RETRIES",
+        "YOUTUBE_DAILY_PUBLISH_LIMIT", "YOUTUBE_SCHEDULE_AFTER_HOURS",
+        "TG_DOWNLOAD_INTERVAL_SECONDS",
+    })
+    _float_keys = frozenset({
+        "REQUEST_DELAY", "STEREO_OFFSET", "LONG_AUDIO_SPLIT_TRIGGER_HOURS",
+        "LONG_AUDIO_PART_TARGET_HOURS", "YOUTUBE_PODCAST_AI_RETRY_BASE_SECONDS",
+        "YOUTUBE_PODCAST_YT_RETRY_BASE_SECONDS",
+    })
     for row in _fetch_all("SELECT setting_key, setting_value FROM public.global_settings"):
-        config[row["setting_key"]] = row["setting_value"]
+        key = row["setting_key"]
+        val = row["setting_value"]
+        if val is None:
+            continue
+        if key in _bool_keys:
+            config[key] = str(val).strip().lower() in ("true", "1", "yes", "on")
+        elif key in _int_keys:
+            try: config[key] = int(val)
+            except (ValueError, TypeError): pass
+        elif key in _float_keys:
+            try: config[key] = float(val)
+            except (ValueError, TypeError): pass
+        else:
+            config[key] = val
 
     # 合并频道级配置（从 channel_runtime_settings + channel_configs）
     if channel:
