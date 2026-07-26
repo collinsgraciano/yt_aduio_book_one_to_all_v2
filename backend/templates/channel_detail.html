@@ -101,35 +101,71 @@ async function loadChannel() {
 function renderConfig(config, schema) {
     const categories = schema.categories || {};
     const globalKeys = new Set(schema.global_keys || []);
+    const allKeys = new Set([...(schema.defaults ? Object.keys(schema.defaults) : [])]);
     let html = '';
     let hasContent = false;
     for (const [cat, items] of Object.entries(categories)) {
-        // 筛选出频道专属配置（非全局 Key）
+        // 🔊 音频处理 分类特殊处理：展示所有 BGM 相关参数（含全局），按模式分组
+        if (cat === '🔊 音频处理') {
+            const bgmKeys = [
+                'ENABLE_BGM_MIX', 'BGM_DUCKING_MODE',
+                'BGM_BASE_GAIN_DB', 'BGM_INTRO_OUTRO_SECONDS',
+                'BGM_DUCK_THRESHOLD_DB', 'BGM_DUCK_THRESHOLD_OFFSET_DB',
+                'BGM_DUCK_RATIO', 'BGM_DUCK_ATTACK_MS', 'BGM_DUCK_RELEASE_MS',
+            ];
+            const bgmItems = bgmKeys.map(k => (items || []).find(i => i.key === k)).filter(Boolean);
+            if (bgmItems.length === 0) continue;
+            hasContent = true;
+            html += `<h6 class="text-primary mt-3 border-bottom pb-1">${cat}</h6>`;
+
+            // 通用参数
+            const commonKeys = ['ENABLE_BGM_MIX', 'BGM_DUCKING_MODE'];
+            const commonItems = bgmItems.filter(i => commonKeys.includes(i.key));
+            html += `<div class="row">`;
+            for (const item of commonItems) {
+                html += renderConfigItem(item, config, schema, globalKeys);
+            }
+            html += `</div>`;
+
+            // 侧链模式参数（sidechain / sidechain_adaptive 共用）
+            const scKeys = ['BGM_BASE_GAIN_DB', 'BGM_INTRO_OUTRO_SECONDS', 'BGM_DUCK_RATIO', 'BGM_DUCK_ATTACK_MS', 'BGM_DUCK_RELEASE_MS'];
+            const scItems = bgmItems.filter(i => scKeys.includes(i.key));
+            const scGlobalKeys = scItems.filter(i => globalKeys.has(i.key)).map(i => i.key);
+            const scGlobalHint = scGlobalKeys.length > 0
+                ? `<small class="text-muted d-block mt-1">⚠️ 标记为全局的参数需在<a href="/settings">全局设置</a>修改</small>` : '';
+            html += `<div class="alert alert-light border mt-2 mb-1"><small class="fw-bold text-info"><i class="bi bi-diagram-3"></i> 侧链压缩参数（sidechain / sidechain_adaptive 模式）</small><div class="row mt-1">`;
+            for (const item of scItems) {
+                html += renderConfigItem(item, config, schema, globalKeys);
+            }
+            html += `</div>${scGlobalHint}</div>`;
+
+            // 固定侧链专用
+            const fixedKeys = ['BGM_DUCK_THRESHOLD_DB'];
+            const fixedItems = bgmItems.filter(i => fixedKeys.includes(i.key));
+            html += `<div class="alert alert-light border mb-1"><small class="fw-bold text-secondary"><i class="bi bi-pin-angle"></i> 固定侧链阈值（仅 sidechain 模式）</small><div class="row mt-1">`;
+            for (const item of fixedItems) {
+                html += renderConfigItem(item, config, schema, globalKeys);
+            }
+            html += `</div></div>`;
+
+            // 自适应侧链专用
+            const adaptiveKeys = ['BGM_DUCK_THRESHOLD_OFFSET_DB'];
+            const adaptiveItems = bgmItems.filter(i => adaptiveKeys.includes(i.key));
+            html += `<div class="alert alert-light border mb-1"><small class="fw-bold text-success"><i class="bi bi-tuning"></i> 自适应偏移（仅 sidechain_adaptive 模式）</small><div class="row mt-1">`;
+            for (const item of adaptiveItems) {
+                html += renderConfigItem(item, config, schema, globalKeys);
+            }
+            html += `</div></div>`;
+            continue;
+        }
+
+        // 其他分类：只展示频道专属配置（非全局 Key）
         const channelItems = (items || []).filter(item => !globalKeys.has(item.key) && item.key !== 'YOUTUBE_UPLOAD_PROXIES');
         if (channelItems.length === 0) continue;
         hasContent = true;
         html += `<h6 class="text-primary mt-3 border-bottom pb-1">${cat}</h6><div class="row">`;
         for (const item of channelItems) {
-            const val = config[item.key] ?? item.default;
-            const label = item.label || item.key;
-            const desc = item.description ? `<small class="text-muted">${item.description}</small>` : '';
-            let input;
-            if (item.type === 'bool') {
-                input = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-key="${item.key}" ${val ? 'checked' : ''}></div>`;
-            } else if (item.type === 'enum') {
-                const opts = (item.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
-                input = `<select class="form-select form-select-sm" data-key="${item.key}">${opts}</select>`;
-            } else if (item.type === 'int' || item.type === 'float') {
-                input = `<input type="number" class="form-control form-control-sm" data-key="${item.key}" value="${val}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.step ? `step="${item.step}"` : (item.type === 'float' ? 'step="0.1"' : '')}>`;
-            } else {
-                const type = item.secret ? 'password' : 'text';
-                if (item.key === 'TARGET_CATEGORY') {
-                    input = `<div class="input-group"><input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}"><button class="btn btn-sm btn-outline-info" type="button" onclick="toggleCategoryList(this)">选择</button></div><div class="category-list mt-1" style="display:none;"></div>`;
-                } else {
-                    input = `<input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}">`;
-                }
-            }
-            html += `<div class="col-md-6 mb-2"><label class="form-label small">${label}</label>${input}${desc}</div>`;
+            html += renderConfigItem(item, config, schema, globalKeys);
         }
         html += '</div>';
     }
@@ -137,6 +173,31 @@ function renderConfig(config, schema) {
         html = '<p class="text-muted">所有配置均为全局共享，请在 <a href="/settings">全局设置</a> 页面统一管理。</p>';
     }
     document.getElementById('config-editor').innerHTML = html;
+}
+
+function renderConfigItem(item, config, schema, globalKeys) {
+    const val = config[item.key] ?? item.default;
+    const label = item.label || item.key;
+    const isGlobal = globalKeys && globalKeys.has(item.key);
+    const globalBadge = isGlobal ? ' <span class="badge bg-light text-secondary">全局</span>' : '';
+    const desc = item.description ? `<small class="text-muted d-block">${item.description}</small>` : '';
+    let input;
+    if (item.type === 'bool') {
+        input = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-key="${item.key}" ${val ? 'checked' : ''} ${isGlobal ? 'disabled' : ''}></div>`;
+    } else if (item.type === 'enum') {
+        const opts = (item.options || []).map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('');
+        input = `<select class="form-select form-select-sm" data-key="${item.key}" ${isGlobal ? 'disabled' : ''}>${opts}</select>`;
+    } else if (item.type === 'int' || item.type === 'float') {
+        input = `<input type="number" class="form-control form-control-sm" data-key="${item.key}" value="${val}" ${item.min !== undefined ? `min="${item.min}"` : ''} ${item.max !== undefined ? `max="${item.max}"` : ''} ${item.step ? `step="${item.step}"` : (item.type === 'float' ? 'step="0.1"' : '')} ${isGlobal ? 'disabled' : ''}>`;
+    } else {
+        const type = item.secret ? 'password' : 'text';
+        if (item.key === 'TARGET_CATEGORY') {
+            input = `<div class="input-group"><input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}"><button class="btn btn-sm btn-outline-info" type="button" onclick="toggleCategoryList(this)">选择</button></div><div class="category-list mt-1" style="display:none;"></div>`;
+        } else {
+            input = `<input type="${type}" class="form-control form-control-sm" data-key="${item.key}" value="${val || ''}" ${isGlobal ? 'disabled' : ''}>`;
+        }
+    }
+    return `<div class="col-md-6 mb-2"><label class="form-label small">${label}${globalBadge}</label>${input}${desc}</div>`;
 }
 
 async function saveConfig() {
