@@ -1022,6 +1022,7 @@ def _call_sensenova_for_combined_text(book_name, book_desc):
             result = _podcast_extract_chat_text(response)
             if result:
                 import json as _json
+                from .cover import _strip_markdown_code_fences
                 cleaned = _strip_markdown_code_fences(result)
                 combined = _json.loads(cleaned)
                 if isinstance(combined, dict):
