@@ -791,6 +791,72 @@ def _dispatch_seo_text(book_name, book_desc, text_token_pool, attempt, runner):
     return None, all_errors
 
 
+def _dispatch_combined_text(book_name, book_desc, text_token_pool, attempt):
+    """按 API_PRIORITY_ORDER 优先级一次生成封面绘图提示词 + SEO 文案。
+
+    返回 (draw_prompt, seo_dict, errors)。
+    draw_prompt 为空或 seo_dict 为 None 表示失败。
+    """
+    priority_list = _parse_api_priority_order()
+    all_errors = []
+
+    for api_name in priority_list:
+        if api_name == "modelscope":
+            def _combined_runner(current_token, text_model):
+                client = _create_modelscope_openai_client(current_token)
+                system_prompt = """你同时是顶级 YouTube 封面设计师和 SEO 大师。根据书名和简介，返回 JSON：
+{
+  "draw_prompt": "可直接用于文生图模型的英文提示词，60-120词，必须包含 --ar 16:9，强调高对比、高饱和、戏剧光影、电影感、16:9横版构图，书名中文大字作为核心视觉元素",
+  "title": "高吸引力长标题",
+  "Description": "用Emoji点缀的带悬念和痛点的高转换率介绍词，约200字",
+  "label": "#有声书 #个人成长 #认知刷新 等至少20个长短尾热门标签"
+}
+只返回 JSON，不要其他文字、解释或 Markdown 标记。"""
+                user_prompt = f"书名：[{book_name}]\n简介：[{book_desc}]"
+                response = client.chat.completions.create(
+                    model=text_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                reply = _strip_markdown_code_fences(_extract_modelscope_chat_content(response))
+                return json.loads(reply)
+
+            combined, model_errors = _run_text_task_with_model_fallback(
+                task_label="合并文本生成(封面提示词+SEO)",
+                token_pool=text_token_pool,
+                attempt=attempt,
+                runner=_combined_runner,
+                model_sequence=_get_modelscope_text_model_sequence(),
+            )
+            if model_errors:
+                all_errors.extend([f"modelscope: {msg}" for msg in model_errors])
+            if combined and isinstance(combined, dict):
+                draw_prompt = str(combined.get("draw_prompt", "") or "").strip()
+                seo_dict = {k: combined.get(k, "") for k in ("title", "Description", "label")}
+                if draw_prompt and seo_dict.get("title"):
+                    log.info("✅ [API 优先级] ModelScope 合并文本生成成功。")
+                    return draw_prompt, seo_dict, all_errors
+            next_idx = priority_list.index(api_name) + 1
+            log.warning("⚠️ [API 优先级] ModelScope 合并文本生成失败，检查下一优先级 %s ...",
+                        priority_list[next_idx] if next_idx < len(priority_list) else "无")
+
+        elif api_name == "sensenova":
+            from .podcast import _call_sensenova_for_combined_text
+
+            log.info("🔄 [API 优先级] 切换到 Sensenova (Podcast AI) 生成合并文本(封面提示词+SEO)...")
+            draw_prompt, seo_dict = _call_sensenova_for_combined_text(book_name, book_desc)
+            if draw_prompt and seo_dict:
+                log.info("✅ [API 优先级] Sensenova 合并文本生成成功。")
+                return draw_prompt, seo_dict, all_errors
+            error_msg = "sensenova: Sensenova 合并文本生成失败"
+            all_errors.append(error_msg)
+            log.warning("⚠️ [API 优先级] Sensenova 合并文本生成失败。")
+
+    return "", None, all_errors
+
+
 def _dispatch_cover_image(output_path, draw_prompt, resolution, image_token_pool):
     """按 API_PRIORITY_ORDER 优先级依次尝试生成封面图片。
 

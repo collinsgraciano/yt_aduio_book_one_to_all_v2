@@ -336,46 +336,107 @@ def prepare_book_cover_and_seo(result, book_data, book_dir, safe_name, book_name
         if not any(token_pool.values()):
             raise RuntimeError("未能解析出可用的 ModelScope Token，无法继续 AI 生成。")
 
-    if enable_cover and not ai_cover_ready:
+    # ── 合并路径：同时需要封面+SEO 时，用单次 API 调用生成两者 ──
+    _combined_used = False
+    if enable_cover and not ai_cover_ready and enable_seo and not seo_ready:
+        from .cover import _dispatch_combined_text, _dispatch_cover_image, _get_modelscope_usage_token_pool, _parse_api_priority_order
         book_desc_text = str(book_data.get("keyWord", "")) + " " + str(book_data.get("bookDescription", ""))
-        video_res = getattr(cfg, "VIDEO_RESOLUTION", "1080p")
-        try:
-            ok_cover = auto_create_youtube_cover(book_name, book_desc_text, ai_cover_target_path, token_pool, video_res)
-        except CoverGenerationPolicyRejectedError as e:
-            if not _is_nonempty_local_file(fallback_cover_path):
-                raise RuntimeError(
-                    "AI 封面命中提供商审核拒绝，且 books 数据中没有可用封面可回退，停止后续处理。"
-                ) from e
+        text_token_pool = _get_modelscope_usage_token_pool(token_pool, "text") if "modelscope" in _parse_api_priority_order() else None
 
-            result.cover_image_path = _persist_cover_fallback_image(fallback_cover_path, ai_cover_target_path)
-            cover_ready = _is_nonempty_local_file(result.cover_image_path)
-            ai_cover_ready = (
-                os.path.abspath(result.cover_image_path) == os.path.abspath(ai_cover_target_path) and cover_ready
-            )
-            log.warning(
-                "[%s] AI 封面命中提供商审核拒绝，已停止继续重试并改用 books 数据封面：%s | %s",
-                book_name,
-                os.path.basename(result.cover_image_path),
-                e,
-            )
-            ok_cover = True
-        if not ok_cover:
-            raise RuntimeError("AI 封面生成未成功，停止后续处理。")
-        if _is_nonempty_local_file(ai_cover_target_path):
-            result.cover_image_path = ai_cover_target_path
-            ai_cover_ready = True
-            cover_ready = True
+        log.info("[%s] 合并生成封面提示词 + SEO 文案（单次 API 调用）...", book_name)
+        draw_prompt, seo_dict, combined_errors = _dispatch_combined_text(
+            book_name=book_name,
+            book_desc=book_desc_text,
+            text_token_pool=text_token_pool,
+            attempt=1,
+        )
 
-    if enable_seo and not seo_ready:
-        book_desc_text = str(book_data.get("keyWord", "")) + " " + str(book_data.get("bookDescription", ""))
-        ok_seo, seo_dict = auto_create_youtube_seo(book_name, book_desc_text, seo_path_ai, token_pool)
-        if not ok_seo or not isinstance(seo_dict, dict):
-            raise RuntimeError("SEO 文案生成未成功，停止后续处理。")
-        result.seo_text_path = seo_path_ai
-        result.seo_title = seo_dict.get("title", "")
-        result.seo_description = seo_dict.get("Description", "")
-        result.seo_tags = seo_dict.get("label", "")
-        seo_ready = True
+        if draw_prompt and seo_dict:
+            _combined_used = True
+            # 写入 SEO 文件
+            import json as _json
+            with open(seo_path_ai, "w", encoding="utf-8") as f:
+                _json.dump(seo_dict, f, ensure_ascii=False, indent=2)
+            result.seo_text_path = seo_path_ai
+            result.seo_title = seo_dict.get("title", "")
+            result.seo_description = seo_dict.get("Description", "")
+            result.seo_tags = seo_dict.get("label", "")
+            seo_ready = True
+            log.info("[%s] ✅ 合并文本生成成功，SEO 文案已保存。", book_name)
+
+            # 用合并返回的 draw_prompt 直接生成封面图片
+            image_token_pool = _get_modelscope_usage_token_pool(token_pool, "image") if "modelscope" in _parse_api_priority_order() else None
+            video_res = getattr(cfg, "VIDEO_RESOLUTION", "1080p")
+            try:
+                ok_cover = _dispatch_cover_image(
+                    output_path=ai_cover_target_path,
+                    draw_prompt=draw_prompt,
+                    resolution=video_res,
+                    image_token_pool=image_token_pool,
+                )
+            except CoverGenerationPolicyRejectedError as e:
+                if not _is_nonempty_local_file(fallback_cover_path):
+                    raise RuntimeError(
+                        "AI 封面命中提供商审核拒绝，且 books 数据中没有可用封面可回退，停止后续处理。"
+                    ) from e
+                result.cover_image_path = _persist_cover_fallback_image(fallback_cover_path, ai_cover_target_path)
+                cover_ready = _is_nonempty_local_file(result.cover_image_path)
+                ai_cover_ready = (
+                    os.path.abspath(result.cover_image_path) == os.path.abspath(ai_cover_target_path) and cover_ready
+                )
+                ok_cover = True
+            if ok_cover and _is_nonempty_local_file(ai_cover_target_path):
+                result.cover_image_path = ai_cover_target_path
+                ai_cover_ready = True
+                cover_ready = True
+            else:
+                raise RuntimeError("合并路径：封面图片生成未成功，停止后续处理。")
+        else:
+            log.warning("[%s] 合并文本生成失败，回退到分别生成模式。错误: %s",
+                        book_name, " | ".join(combined_errors[-5:]) if combined_errors else "无")
+
+    # ── 分离路径：只需要封面或只需要 SEO，或合并失败时回退 ──
+    if not _combined_used:
+        if enable_cover and not ai_cover_ready:
+            book_desc_text = str(book_data.get("keyWord", "")) + " " + str(book_data.get("bookDescription", ""))
+            video_res = getattr(cfg, "VIDEO_RESOLUTION", "1080p")
+            try:
+                ok_cover = auto_create_youtube_cover(book_name, book_desc_text, ai_cover_target_path, token_pool, video_res)
+            except CoverGenerationPolicyRejectedError as e:
+                if not _is_nonempty_local_file(fallback_cover_path):
+                    raise RuntimeError(
+                        "AI 封面命中提供商审核拒绝，且 books 数据中没有可用封面可回退，停止后续处理。"
+                    ) from e
+
+                result.cover_image_path = _persist_cover_fallback_image(fallback_cover_path, ai_cover_target_path)
+                cover_ready = _is_nonempty_local_file(result.cover_image_path)
+                ai_cover_ready = (
+                    os.path.abspath(result.cover_image_path) == os.path.abspath(ai_cover_target_path) and cover_ready
+                )
+                log.warning(
+                    "[%s] AI 封面命中提供商审核拒绝，已停止继续重试并改用 books 数据封面：%s | %s",
+                    book_name,
+                    os.path.basename(result.cover_image_path),
+                    e,
+                )
+                ok_cover = True
+            if not ok_cover:
+                raise RuntimeError("AI 封面生成未成功，停止后续处理。")
+            if _is_nonempty_local_file(ai_cover_target_path):
+                result.cover_image_path = ai_cover_target_path
+                ai_cover_ready = True
+                cover_ready = True
+
+        if enable_seo and not seo_ready:
+            book_desc_text = str(book_data.get("keyWord", "")) + " " + str(book_data.get("bookDescription", ""))
+            ok_seo, seo_dict = auto_create_youtube_seo(book_name, book_desc_text, seo_path_ai, token_pool)
+            if not ok_seo or not isinstance(seo_dict, dict):
+                raise RuntimeError("SEO 文案生成未成功，停止后续处理。")
+            result.seo_text_path = seo_path_ai
+            result.seo_title = seo_dict.get("title", "")
+            result.seo_description = seo_dict.get("Description", "")
+            result.seo_tags = seo_dict.get("label", "")
+            seo_ready = True
 
     cover_ready = _is_nonempty_local_file(result.cover_image_path)
     if enable_cover and not cover_ready:

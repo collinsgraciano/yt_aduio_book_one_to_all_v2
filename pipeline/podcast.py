@@ -977,6 +977,74 @@ JSON 必须严格有且只有以下三个 key：
     return None
 
 
+def _call_sensenova_for_combined_text(book_name, book_desc):
+    """使用 Sensenova 一次生成封面绘图提示词 + SEO 文案。
+
+    返回 (draw_prompt, seo_dict)。失败返回 ("", None)。
+    """
+    import traceback as _tb
+    try:
+        client = OpenAI(
+            base_url=str(getattr(cfg, "SENSENOVA_BASE_URL", "https://token.sensenova.cn/v1") or "").strip(),
+            api_key=str(getattr(cfg, "SENSENOVA_API_KEY", "") or "").strip(),
+        )
+    except TypeError as e:
+        log.error("❌ [Sensenova Combined] 创建 OpenAI 客户端失败: %s", e)
+        return "", None
+
+    model_name = str(
+        getattr(cfg, "YOUTUBE_PODCAST_TEXT_MODEL_PRIMARY", "qwen-plus") or "qwen-plus"
+    ).strip()
+    retries = max(1, int(getattr(cfg, "YOUTUBE_PODCAST_TEXT_MODEL_RETRIES", 3) or 3))
+
+    system_prompt = """你同时是顶级 YouTube 封面设计师和 SEO 大师。根据书名和简介，返回 JSON：
+{
+  "draw_prompt": "可直接用于文生图模型的英文提示词，60-120词，必须包含 --ar 16:9，强调高对比、高饱和、戏剧光影、电影感、16:9横版构图，书名中文大字作为核心视觉元素",
+  "title": "高吸引力长标题",
+  "Description": "用Emoji点缀的带悬念和痛点的高转换率介绍词，约200字",
+  "label": "#有声书 #个人成长 #认知刷新 等至少20个长短尾热门标签"
+}
+只返回 JSON，不要其他文字、解释或 Markdown 标记。"""
+
+    user_prompt = f"书名：[{book_name}]\n简介：[{book_desc}]"
+
+    for attempt_index in range(retries):
+        try:
+            log.info("🔄 [Sensenova Combined] 使用 %s 生成合并文本 (第 %d/%d 次)...",
+                     model_name, attempt_index + 1, retries)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            result = _podcast_extract_chat_text(response)
+            if result:
+                import json as _json
+                cleaned = _strip_markdown_code_fences(result)
+                combined = _json.loads(cleaned)
+                if isinstance(combined, dict):
+                    draw_prompt = str(combined.get("draw_prompt", "") or "").strip()
+                    seo_dict = {k: combined.get(k, "") for k in ("title", "Description", "label")}
+                    if draw_prompt and seo_dict.get("title"):
+                        log.info("✅ [Sensenova Combined] 合并文本生成成功。")
+                        return draw_prompt, seo_dict
+            raise ValueError("Sensenova 返回的内容为空或非 JSON。")
+        except Exception as e:
+            if isinstance(e, (TypeError, ImportError, AttributeError, ModuleNotFoundError)):
+                tb_str = ''.join(_tb.format_exception(type(e), e, e.__traceback__))
+                log.error("❌ [Sensenova Combined] 遇到非 API 类错误:\n%s\n完整堆栈:\n%s", e, tb_str)
+                return "", None
+            err_text = _podcast_error_text(e)
+            log.warning("⚠️ [Sensenova Combined] 第 %d/%d 次失败: %s", attempt_index + 1, retries, err_text)
+            if attempt_index < retries - 1:
+                time.sleep(_podcast_ai_retry_sleep_seconds(attempt_index))
+
+    log.error("❌ [Sensenova Combined] 全部 %d 次重试均失败。", retries)
+    return "", None
+
+
 # ---- 图片 URL 下载（被 _sensenova_generate_cover_fallback 使用）----
 
 
