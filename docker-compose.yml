@@ -11,7 +11,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: audiobook_postgres
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB: audiobook
       POSTGRES_USER: audiobook_app
@@ -35,7 +35,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.web
     container_name: audiobook_web
-    restart: unless-stopped
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,7 +80,7 @@ services:
       context: hf_workers/vps_relay
       dockerfile: Dockerfile
     container_name: hf-vps-relay
-    restart: unless-stopped
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy

@@ -28,6 +28,6 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 38080
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:38080/api/status || exit 1
+    CMD curl -f http://localhost:38080/health || exit 1
 
 CMD ["python", "app.py"]

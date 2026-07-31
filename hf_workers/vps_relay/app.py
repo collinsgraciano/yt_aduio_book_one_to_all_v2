@@ -91,6 +91,15 @@ _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared import upsert_worker_stats as _shared_upsert_worker_stats, normalize_text_items as _shared_normalize_text_items
 
 # ═══════════════════════════════════════════════════════════
+# 轻量健康检查（供 Docker HEALTHCHECK 使用，不查库不查 Worker）
+# ═══════════════════════════════════════════════════════════
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"ok": True}), 200
+
+
+# ═══════════════════════════════════════════════════════════
 # 数据库工具
 # ═══════════════════════════════════════════════════════════
 
