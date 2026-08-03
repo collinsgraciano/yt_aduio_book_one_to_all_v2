@@ -623,7 +623,7 @@ def build_final_audio_from_chapter_paths(chapter_paths, working_dir, merged_path
                 sc_ratio=int(getattr(cfg, "BGM_DUCK_RATIO", 8)),
                 sc_attack_ms=int(getattr(cfg, "BGM_DUCK_ATTACK_MS", 5)),
                 sc_release_ms=int(getattr(cfg, "BGM_DUCK_RELEASE_MS", 400)),
-                intro_outro_seconds=int(getattr(cfg, "BGM_INTRO_OUTRO_SECONDS", 3)),
+                intro_outro_seconds=int(getattr(cfg, "BGM_INTRO_OUTRO_SECONDS", 5)),
             )
             if not ok_mix:
                 raise RuntimeError(f"BGM 混音失败: {os.path.basename(ch_path)}")

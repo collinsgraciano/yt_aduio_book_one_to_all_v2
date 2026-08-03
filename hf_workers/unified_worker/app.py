@@ -215,15 +215,24 @@ def _update_worker_stats(worker_type: str, success: bool, duration_seconds: int)
 # ═══════════════════════════════════════════════════════════
 
 _cached_pipeline_config: dict | None = None
+_cached_pipeline_config_ts: float = 0.0
 _cached_test_config: dict | None = None
 _config_lock = threading.Lock()
+
+# 配置缓存 TTL（秒）：到期后自动重新拉取，确保 VPS 端配置变更能及时生效
+_CONFIG_CACHE_TTL = 60.0
 
 
 def _fetch_pipeline_config(channel: str) -> dict:
     """从 VPS 中继拉取流水线配置。"""
-    global _cached_pipeline_config
+    global _cached_pipeline_config, _cached_pipeline_config_ts
+    import time as _time
     with _config_lock:
-        if _cached_pipeline_config and _cached_pipeline_config.get("_channel") == channel:
+        if (
+            _cached_pipeline_config
+            and _cached_pipeline_config.get("_channel") == channel
+            and (_time.monotonic() - _cached_pipeline_config_ts) < _CONFIG_CACHE_TTL
+        ):
             return dict(_cached_pipeline_config)
 
     if not VPS_RELAY_URL:
@@ -239,6 +248,7 @@ def _fetch_pipeline_config(channel: str) -> dict:
         config["_channel"] = channel
         with _config_lock:
             _cached_pipeline_config = config
+            _cached_pipeline_config_ts = _time.monotonic()
         logger.info("[配置] 流水线配置拉取成功: channel=%s", channel)
         return dict(config)
     except Exception as e:

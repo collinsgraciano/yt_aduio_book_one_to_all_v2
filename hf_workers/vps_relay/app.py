@@ -1167,7 +1167,21 @@ def pipeline_config():
                 (channel,),
             )
             for row in rows:
-                config[row["setting_key"]] = row["setting_value"]
+                key = row["setting_key"]
+                val = row["setting_value"]
+                if val is None:
+                    continue
+                # channel_runtime_settings 存储为字符串，需与 global_settings 一样做类型转换
+                if key in _bool_keys:
+                    config[key] = str(val).strip().lower() in ("true", "1", "yes", "on")
+                elif key in _int_keys:
+                    try: config[key] = int(val)
+                    except (ValueError, TypeError): pass
+                elif key in _float_keys:
+                    try: config[key] = float(val)
+                    except (ValueError, TypeError): pass
+                else:
+                    config[key] = val
         except Exception:
             pass
 
