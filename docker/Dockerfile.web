@@ -50,6 +50,9 @@ COPY backend/ /app/backend/
 # pipeline 包
 COPY pipeline/ /app/pipeline/
 
+# supabase_backup 包（B2 云备份 Web 管理需要）
+COPY supabase_backup/ /app/supabase_backup/
+
 # ─── DeepFilter 二进制 ───
 # 不在 Dockerfile 中下载 — 通过宿主机 ./data/deepfilter/ 持久化
 # 部署脚本(git-server-deploy.sh)在构建前下载到该目录

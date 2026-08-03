@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from .settings import settings as app_settings
 from .auth import AuthMiddleware, COOKIE_NAME, COOKIE_MAX_AGE, create_auth_cookie_value
-from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf, scheduled_tasks, system_tools
+from .api import channels, oauth, tasks, books, config, settings as system_api, tests, tests_hf, tasks_hf, scheduled_tasks, system_tools, b2_backup
 
 # ─── 日志配置 ───
 logging.basicConfig(
@@ -166,6 +166,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"系统工具调度器启动失败（非致命）: {e}")
 
+    # 启动 B2 备份定时调度器
+    try:
+        from .api.b2_backup import start_scheduler as start_b2_scheduler
+        start_b2_scheduler()
+    except Exception as e:
+        logger.warning(f"B2备份调度器启动失败（非致命）: {e}")
+
     yield
 
     # ── 关闭 ──
@@ -180,6 +187,12 @@ async def lifespan(app: FastAPI):
     try:
         from .api.system_tools import stop_scheduler as stop_tools_scheduler
         stop_tools_scheduler()
+    except Exception:
+        pass
+    # 停止 B2 备份调度器
+    try:
+        from .api.b2_backup import stop_scheduler as stop_b2_scheduler
+        stop_b2_scheduler()
     except Exception:
         pass
     # 关闭 backend 数据库连接池
@@ -221,6 +234,7 @@ app.include_router(tests_hf.router)
 app.include_router(tasks_hf.router)
 app.include_router(scheduled_tasks.router)
 app.include_router(system_tools.router)
+app.include_router(b2_backup.router)
 
 # ─── Jinja2 模板 ───
 templates_dir = Path(__file__).parent / "templates"
@@ -326,6 +340,12 @@ async def page_settings(request: Request):
 async def page_system_tools(request: Request):
     """系统工具。"""
     return templates.TemplateResponse("system_tools.html", {"request": request})
+
+
+@app.get("/b2-backup", response_class=HTMLResponse)
+async def page_b2_backup(request: Request):
+    """B2 云备份。"""
+    return templates.TemplateResponse("b2_backup.html", {"request": request})
 
 
 @app.get("/tests/ai", response_class=HTMLResponse)

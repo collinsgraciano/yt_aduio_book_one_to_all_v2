@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}B2 云备份{% endblock %}
+{% block nav_b2_backup %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-cloud-arrow-up"></i> B2 云备份</h4>
+    <span class="badge bg-info text-dark" id="scriptStatus">空闲</span>
+</div>
+
+<div id="depAlert"></div>
+
+<!-- Tab 导航 -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-config" type="button">
+            <i class="bi bi-sliders"></i> 配置
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-backup" type="button">
+            <i class="bi bi-database-down"></i> 备份与恢复
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-schedule" type="button">
+            <i class="bi bi-clock-history"></i> 定时备份
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+
+    <!-- ═══ 配置 ═══ -->
+    <div class="tab-pane fade show active" id="tab-config">
+        <div class="alert alert-info py-2 mb-3">
+            <i class="bi bi-info-circle"></i>
+            配置保存在数据库 global_settings 表中，与 .env 文件独立。
+            B2 免费额度：10GB 存储 + 1GB/天下载，无单文件大小限制。
+        </div>
+        <div id="configFormArea">加载中...</div>
+        <div class="mt-3">
+            <button class="btn btn-primary" onclick="saveConfig()">
+                <i class="bi bi-check-lg"></i> 保存配置
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══ 备份与恢复 ═══ -->
+    <div class="tab-pane fade" id="tab-backup">
+        <div class="alert alert-warning py-2 mb-3">
+            <i class="bi bi-exclamation-triangle"></i>
+            备份/恢复通过 SSH 连接 VPS 执行 pg_dump/psql，确保 VPS SSH 配置正确。
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">马上备份</h6>
+                    <p class="small text-muted">SSH→pg_dump→上传 B2 + 下载 .env/docker-compose</p>
+                    <button class="btn btn-primary" onclick="doBackup()">
+                        <i class="bi bi-cloud-arrow-up"></i> 马上备份
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">刷新备份列表</h6>
+                    <p class="small text-muted">从 B2 拉取所有备份文件夹</p>
+                    <button class="btn btn-outline-secondary" onclick="loadBackups()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center h-100">
+                    <h6 class="text-muted">备份保留数量</h6>
+                    <p class="small text-muted">旧备份自动删除（在配置页设置）</p>
+                    <span class="badge bg-info text-dark fs-6" id="backupKeepBadge">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- B2 备份列表 -->
+        <div class="card">
+            <div class="card-header"><i class="bi bi-cloud"></i> B2 中的备份</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>备份文件夹</th><th>文件数</th><th>总大小</th><th>包含文件</th><th class="text-end">操作</th></tr></thead>
+                    <tbody id="backupList"><tr><td colspan="5" class="text-center text-muted py-3">点击「刷新」加载</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 恢复区域 -->
+        <div class="card mt-3">
+            <div class="card-header"><i class="bi bi-database-up"></i> 恢复数据</div>
+            <div class="card-body">
+                <div class="alert alert-danger py-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    恢复会<strong>覆盖</strong> VPS 上的数据库和配置文件！原文件会自动备份为 .bak。
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">选择备份</label>
+                        <select id="restoreSelect" class="form-select">
+                            <option value="">— 最新备份 —</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">恢复范围</label>
+                        <select id="restoreMode" class="form-select">
+                            <option value="full">完整恢复（数据库 + 配置文件）</option>
+                            <option value="db_only">仅恢复数据库</option>
+                            <option value="config_only">仅恢复配置文件</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="restoreConfirm">
+                    <label class="form-check-label text-danger" for="restoreConfirm">我确认要覆盖 VPS 上的数据</label>
+                </div>
+                <button class="btn btn-danger" onclick="doRestore()" id="btnRestore" disabled>
+                    <i class="bi bi-database-up"></i> 恢复数据
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 定时备份 ═══ -->
+    <div class="tab-pane fade" id="tab-schedule">
+        <div class="alert alert-info py-2">
+            <i class="bi bi-info-circle"></i>
+            开启后，后台守护线程会按设定的间隔自动执行 B2 备份。
+            调度器每小时检查一次是否到达执行时间。
+        </div>
+        <div class="card">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="mb-0"><i class="bi bi-clock-history"></i> 定时 B2 备份</h6>
+                    <small class="text-muted">SSH→pg_dump→上传 B2，自动清理旧备份</small>
+                    <div class="small text-muted mt-1" id="scheduleLastRun">上次执行: 加载中...</div>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="form-label mb-0 small text-muted">间隔(小时)</label>
+                        <input type="number" class="form-control form-control-sm" style="width:80px"
+                            value="24" min="1" id="scheduleInterval"
+                            onchange="updateScheduleInterval(this.value)">
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="scheduleEnabled"
+                            onchange="toggleSchedule(this.checked)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ 实时日志区域 ═══ -->
+<div class="card mt-3" id="logCard" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-terminal"></i> 执行日志 <span class="badge bg-info text-dark ms-2" id="logScriptName"></span></span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()"><i class="bi bi-eraser"></i> 清空</button>
+    </div>
+    <div class="card-body p-0">
+        <div class="log-container" id="logContainer" style="min-height:200px;max-height:500px"><p class="text-muted text-center py-3">等待执行...</p></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pollTimer = null;
+let lastLogCount = 0;
+let secretKeys = [];
+
+async function loadConfig() {
+    try {
+        const data = await api('/api/b2-backup/config');
+        secretKeys = data.secret_keys || [];
+        const config = data.config;
+
+        // 依赖检查
+        const alertEl = document.getElementById('depAlert');
+        if (!data.available) {
+            alertEl.innerHTML = '<div class="alert alert-danger py-2 mb-3"><i class="bi bi-exclamation-triangle"></i> 依赖未安装: ' + data.import_error + '。请在 requirements.txt 中添加 paramiko 和 boto3 后重新构建。</div>';
+        } else {
+            alertEl.innerHTML = '';
+        }
+
+        // 按分组渲染表单
+        const groups = data.groups || [];
+        let html = '';
+        for (const group of groups) {
+            html += '<div class="card mb-3"><div class="card-header py-2"><i class="bi ' + group.icon + '"></i> ' + group.title + '</div><div class="card-body">';
+            html += '<div class="row g-3">';
+            for (const key of group.keys) {
+                const val = config[key] || '';
+                const isSecret = secretKeys.includes(key);
+                const inputType = isSecret ? 'password' : 'text';
+                let label = key;
+                // 友好标签
+                const labelMap = {
+                    'VPS_HOST': 'VPS 主机地址', 'VPS_PORT': 'SSH 端口', 'VPS_USER': 'SSH 用户名', 'VPS_PASS': 'SSH 密码',
+                    'VPS_CONTAINER': 'Docker 容器名', 'VPS_DB_USER': '数据库用户', 'VPS_DB_NAME': '数据库名', 'VPS_PROJECT_DIR': '项目目录',
+                    'B2_ENDPOINT': 'B2 Endpoint', 'B2_ACCESS_KEY_ID': 'B2 Key ID', 'B2_SECRET_ACCESS_KEY': 'B2 Application Key', 'B2_BUCKET': 'B2 Bucket 名',
+                    'BACKUP_KEEP': '保留备份数', 'BACKUP_INTERVAL_HOURS': '备份间隔(小时)',
+                };
+                const displayLabel = labelMap[key] || key;
+                html += '<div class="col-md-6">';
+                html += '<label class="form-label small text-muted">' + displayLabel + ' <code class="text-secondary">' + key + '</code></label>';
+                if (key === 'BACKUP_KEEP' || key === 'BACKUP_INTERVAL_HOURS' || key === 'VPS_PORT') {
+                    html += '<input type="number" class="form-control" id="cfg_' + key + '" value="' + val + '" min="1">';
+                } else {
+                    html += '<input type="' + inputType + '" class="form-control" id="cfg_' + key + '" value="' + val + '" placeholder="' + displayLabel + '">';
+                }
+                html += '</div>';
+            }
+            html += '</div></div></div>';
+        }
+        document.getElementById('configFormArea').innerHTML = html;
+
+        // 更新备份保留数量 Badge
+        const keepVal = config['BACKUP_KEEP'] || '-';
+        const badge = document.getElementById('backupKeepBadge');
+        if (badge) badge.textContent = keepVal + ' 份';
+    } catch (e) {
+        document.getElementById('configFormArea').innerHTML = '<div class="alert alert-danger">加载配置失败: ' + e.message + '</div>';
+    }
+}
+
+async function saveConfig() {
+    const config = {};
+    const allKeys = [
+        'VPS_HOST', 'VPS_PORT', 'VPS_USER', 'VPS_PASS',
+        'VPS_CONTAINER', 'VPS_DB_USER', 'VPS_DB_NAME', 'VPS_PROJECT_DIR',
+        'B2_ENDPOINT', 'B2_ACCESS_KEY_ID', 'B2_SECRET_ACCESS_KEY', 'B2_BUCKET',
+        'BACKUP_KEEP', 'BACKUP_INTERVAL_HOURS',
+    ];
+    for (const key of allKeys) {
+        const el = document.getElementById('cfg_' + key);
+        if (el) config[key] = el.value;
+    }
+    try {
+        const data = await api('/api/b2-backup/config', { method: 'POST', body: JSON.stringify({ config }) });
+        showToast(data.message, 'success');
+        loadConfig();
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function doBackup() {
+    try {
+        await api('/api/b2-backup/backup', { method: 'POST' });
+        showToast('B2备份已启动', 'success');
+        startLogPolling('B2备份');
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+async function doRestore() {
+    const folder = document.getElementById('restoreSelect').value || null;
+    const mode = document.getElementById('restoreMode').value;
+    const body = { confirm: true, folder };
+    if (mode === 'db_only') body.db_only = true;
+    if (mode === 'config_only') body.config_only = true;
+    try {
+        await api('/api/b2-backup/restore', { method: 'POST', body: JSON.stringify(body) });
+        const label = folder || '最新备份';
+        showToast('恢复已启动: ' + label, 'success');
+        startLogPolling('B2恢复');
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+function startLogPolling(label) {
+    document.getElementById('logCard').style.display = '';
+    document.getElementById('logScriptName').textContent = label;
+    document.getElementById('logContainer').innerHTML = '';
+    lastLogCount = 0;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollStatus, 1000);
+    pollStatus();
+}
+
+async function pollStatus() {
+    try {
+        const data = await api('/api/b2-backup/status');
+        const badge = document.getElementById('scriptStatus');
+        const container = document.getElementById('logContainer');
+        if (data.running) {
+            badge.textContent = '运行中';
+            badge.className = 'badge bg-warning text-dark';
+        } else if (data.exit_code !== null) {
+            badge.textContent = data.exit_code === 0 ? '已完成' : '失败';
+            badge.className = 'badge bg-' + (data.exit_code === 0 ? 'success' : 'danger');
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            showToast('执行完成，退出码: ' + data.exit_code, data.exit_code === 0 ? 'success' : 'danger');
+            loadBackups(); loadSchedule();
+        } else {
+            badge.textContent = '空闲'; badge.className = 'badge bg-info text-dark';
+        }
+        if (data.logs.length > lastLogCount) {
+            for (const line of data.logs.slice(lastLogCount)) {
+                const p = document.createElement('p');
+                p.className = 'log-line';
+                p.textContent = line;
+                container.appendChild(p);
+            }
+            lastLogCount = data.logs.length;
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch (e) { console.error('poll error:', e); }
+}
+
+function clearLog() { document.getElementById('logContainer').innerHTML = ''; lastLogCount = 0; }
+
+async function loadBackups() {
+    const tbody = document.getElementById('backupList');
+    const sel = document.getElementById('restoreSelect');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">加载中...</td></tr>';
+    try {
+        const data = await api('/api/b2-backup/backups');
+        if (data.error) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">' + data.error + '</td></tr>';
+            return;
+        }
+        if (data.backups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无备份</td></tr>';
+            sel.innerHTML = '<option value="">— 最新备份 —</option>';
+            return;
+        }
+        tbody.innerHTML = data.backups.map(b => {
+            const fileNames = b.files.map(f => f.name).join(', ');
+            return '<tr><td><code>' + b.folder + '</code></td><td>' + b.file_count + '</td><td>' + b.total_size_text + '</td><td class="small text-muted">' + fileNames + '</td><td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="useRestore(\'' + b.folder + '\')"><i class="bi bi-arrow-right-circle"></i> 恢复</button></td></tr>';
+        }).join('');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">— 最新备份 —</option>' + data.backups.map(b => '<option value="' + b.folder + '">' + b.folder + ' (' + b.total_size_text + ')</option>').join('');
+        sel.value = cur;
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">' + e.message + '</td></tr>';
+    }
+}
+
+function useRestore(folder) {
+    document.querySelector('button[data-bs-target="#tab-backup"]').click();
+    document.getElementById('restoreSelect').value = folder;
+}
+
+async function loadSchedule() {
+    try {
+        const data = await api('/api/b2-backup/schedule');
+        document.getElementById('scheduleEnabled').checked = data.enabled;
+        document.getElementById('scheduleInterval').value = data.interval_hours;
+        const lastRun = data.last_run ? fmtTime(data.last_run) : '从未执行';
+        document.getElementById('scheduleLastRun').textContent = '上次执行: ' + lastRun;
+    } catch (e) { console.error(e); }
+}
+
+async function toggleSchedule(enabled) {
+    const interval = parseInt(document.getElementById('scheduleInterval').value) || 24;
+    try {
+        await api('/api/b2-backup/schedule', { method: 'POST', body: JSON.stringify({ enabled, interval_hours: interval }) });
+        showToast('定时备份已' + (enabled ? '开启' : '关闭'));
+    } catch (e) { showToast(e.message, 'danger'); loadSchedule(); }
+}
+
+async function updateScheduleInterval(hours) {
+    try {
+        await api('/api/b2-backup/schedule', { method: 'POST', body: JSON.stringify({ interval_hours: parseInt(hours) || 24 }) });
+        showToast('间隔已更新为 ' + hours + ' 小时');
+    } catch (e) { showToast(e.message, 'danger'); }
+}
+
+// 确认框联动
+document.getElementById('restoreConfirm').addEventListener('change', e => {
+    document.getElementById('btnRestore').disabled = !e.target.checked;
+});
+
+// 初始化
+loadConfig(); loadBackups(); loadSchedule(); pollStatus();
+</script>
+{% endblock %}

@@ -36,3 +36,7 @@ croniter>=2.0.0
 
 # ─── 代理支持 ───
 PySocks>=1.7.1
+
+# ─── B2 云备份 (supabase_backup) ───
+paramiko>=3.4.0
+boto3>=1.34.0
